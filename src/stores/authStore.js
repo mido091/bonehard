@@ -24,11 +24,17 @@ export const authState = reactive({
   isLogoutModalOpen: false,
 });
 
+/** Deduplication: holds the in-flight Promise so concurrent calls share one request */
+let _loadPromise = null;
+
 /**
  * Loads the current session from the server on first app load.
  * Skips the network call entirely when localStorage indicates
  * there is no active session, preventing a noisy 401 console error
  * on the public home page for guest visitors.
+ *
+ * Multiple concurrent callers share the same in-flight Promise — only
+ * one request is ever made at a time.
  */
 export async function loadCurrentUser({ force = false } = {}) {
   const cached = localStorage.getItem('bh_auth_ready');
@@ -40,20 +46,28 @@ export async function loadCurrentUser({ force = false } = {}) {
     return;
   }
 
+  // Return existing in-flight request instead of making a duplicate
+  if (_loadPromise && !force) return _loadPromise;
+
   authState.loading = true;
 
-  try {
-    const response = await api.get('/api/auth/me');
-    authState.user = response.data.user;
-    localStorage.setItem('bh_auth_ready', 'ok');
-  } catch {
-    authState.user = null;
-    // Only cache 'none' for 401 (not logged in), not transient network errors
-    localStorage.setItem('bh_auth_ready', 'none');
-  } finally {
-    authState.loading = false;
-    authState.ready = true;
-  }
+  _loadPromise = api.get('/api/auth/me')
+    .then((response) => {
+      authState.user = response.data.user;
+      localStorage.setItem('bh_auth_ready', 'ok');
+    })
+    .catch(() => {
+      authState.user = null;
+      // Only cache 'none' for 401 (not logged in), not transient network errors
+      localStorage.setItem('bh_auth_ready', 'none');
+    })
+    .finally(() => {
+      authState.loading = false;
+      authState.ready = true;
+      _loadPromise = null;
+    });
+
+  return _loadPromise;
 }
 
 export function isAuthenticated() {

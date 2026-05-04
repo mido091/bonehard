@@ -139,11 +139,13 @@ onMounted(loadPayments);
       <div v-else class="payments-list">
         <article v-for="row in rows" :key="row.id" class="payment-card">
           <div class="payment-card__main">
-            <div>
+            <div class="payment-user">
               <p class="admin-kicker">User</p>
               <h3>{{ row.userName }}</h3>
-              <p class="admin-muted">{{ row.userEmail }}</p>
-              <p class="admin-muted">{{ row.userPhone || 'No account phone' }}</p>
+              <div class="payment-user__meta">
+                <span>{{ row.userEmail }}</span>
+                <span>{{ row.userPhone || 'No account phone' }}</span>
+              </div>
             </div>
             <span class="payment-status" :class="`payment-status--${row.status}`">{{ row.status }}</span>
           </div>
@@ -167,39 +169,52 @@ onMounted(loadPayments);
             </div>
           </div>
 
-          <div class="payment-proof">
-            <button class="admin-link-button" type="button" @click="openProofPreview(row)">
-              View Payment Proof
-            </button>
-            <span class="admin-muted">{{ row.proofFileName }}</span>
+          <div class="payment-card__footer">
+            <div class="payment-proof">
+              <button class="admin-link-button" type="button" @click="openProofPreview(row)">
+                View Payment Proof
+              </button>
+              <span class="admin-muted">{{ row.proofFileName }}</span>
+            </div>
+
+            <div v-if="row.status === 'pending'" class="payment-review">
+              <textarea
+                v-model="reviewNotes[row.id]"
+                class="admin-compact-input payment-note"
+                rows="2"
+                placeholder="Review note"
+              ></textarea>
+
+              <div class="admin-actions payment-actions">
+                <button
+                  class="admin-primary-button"
+                  type="button"
+                  :disabled="actionLoading"
+                  @click="review(row, 'approve')"
+                >
+                  {{ actionLoading === `approve-${row.id}` ? 'Approving...' : 'Approve' }}
+                </button>
+                <button
+                  class="admin-danger-button"
+                  type="button"
+                  :disabled="actionLoading"
+                  @click="review(row, 'reject')"
+                >
+                  {{ actionLoading === `reject-${row.id}` ? 'Rejecting...' : 'Reject' }}
+                </button>
+              </div>
+            </div>
+
+            <p v-else-if="row.reviewNote" class="payment-review-note">
+              <span>Review note</span>
+              {{ row.reviewNote }}
+            </p>
           </div>
 
-          <textarea
-            v-model="reviewNotes[row.id]"
-            class="admin-compact-input payment-note"
-            rows="2"
-            placeholder="Review note"
-            :disabled="row.status !== 'pending'"
-          ></textarea>
-
-          <div class="admin-actions">
-            <button
-              class="admin-primary-button"
-              type="button"
-              :disabled="row.status !== 'pending' || actionLoading"
-              @click="review(row, 'approve')"
-            >
-              {{ actionLoading === `approve-${row.id}` ? 'Approving...' : 'Approve' }}
-            </button>
-            <button
-              class="admin-danger-button"
-              type="button"
-              :disabled="row.status !== 'pending' || actionLoading"
-              @click="review(row, 'reject')"
-            >
-              {{ actionLoading === `reject-${row.id}` ? 'Rejecting...' : 'Reject' }}
-            </button>
-          </div>
+          <!--
+            Review controls are intentionally hidden after approval/rejection so completed submissions
+            stay compact while keeping the backend review workflow unchanged.
+          -->
         </article>
 
         <p v-if="!rows.length" class="admin-muted admin-empty-state">No payment submissions found.</p>
@@ -284,32 +299,59 @@ onMounted(loadPayments);
 
 .payments-list {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .payment-card {
   display: grid;
-  gap: 1rem;
-  padding: 1rem;
+  gap: 0.85rem;
+  padding: 0.95rem 1rem;
   border: 1px solid rgba(var(--rgb-foreground), 0.1);
   border-radius: 0.75rem;
   background: rgba(var(--rgb-foreground), 0.035);
 }
 
-.payment-card__main,
-.payment-proof {
+.payment-card__main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
+.payment-user {
+  min-width: 0;
+}
+
 .payment-card h3 {
-  margin: 0;
+  margin: 0.15rem 0 0;
   color: var(--color-text-strong);
 }
 
+.payment-user__meta,
+.payment-proof,
+.payment-card__footer,
+.payment-review,
+.payment-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.payment-user__meta {
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  color: rgba(var(--rgb-foreground), 0.58);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.payment-user__meta span,
+.payment-proof span {
+  overflow-wrap: anywhere;
+}
+
 .payment-status {
+  flex: 0 0 auto;
   padding: 0.4rem 0.65rem;
   border-radius: 999px;
   font-size: 0.74rem;
@@ -323,16 +365,18 @@ onMounted(loadPayments);
 
 .payment-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(9.5rem, 1fr));
+  gap: 0.55rem;
 }
 
 .payment-grid div {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.8rem;
-  border-radius: 0.65rem;
-  background: rgba(var(--rgb-background), 0.25);
+  gap: 0.15rem;
+  min-height: 4rem;
+  padding: 0.62rem 0.7rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.06);
+  border-radius: 0.55rem;
+  background: rgba(var(--rgb-background), 0.2);
 }
 
 .payment-grid span {
@@ -347,9 +391,49 @@ onMounted(loadPayments);
   overflow-wrap: anywhere;
 }
 
+.payment-card__footer {
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.payment-proof {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.payment-review {
+  flex: 1;
+  justify-content: flex-end;
+}
+
 .payment-note {
-  width: 100%;
-  min-height: 5rem;
+  width: min(100%, 28rem);
+  min-height: 3rem;
+  resize: vertical;
+}
+
+.payment-actions {
+  flex: 0 0 auto;
+}
+
+.payment-review-note {
+  max-width: 34rem;
+  margin: 0;
+  padding: 0.62rem 0.75rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  border-radius: 0.55rem;
+  background: rgba(var(--rgb-background), 0.18);
+  color: rgba(var(--rgb-foreground), 0.72);
+  font-weight: 700;
+}
+
+.payment-review-note span {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: rgba(var(--rgb-foreground), 0.5);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .payment-proof-preview {
@@ -429,13 +513,25 @@ onMounted(loadPayments);
   .payment-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .payment-card__footer,
+  .payment-review {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .payment-note {
+    width: 100%;
+  }
 }
 
 @media (max-width: 640px) {
   .payments-toolbar,
   .payment-card__main,
-  .payment-proof {
+  .payment-proof,
+  .payment-actions {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .payments-status-filter {
@@ -455,5 +551,24 @@ onMounted(loadPayments);
   .payment-proof-preview__body {
     min-height: 18rem;
   }
+}
+
+:global([data-theme="light"]) .payment-proof-preview {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+:global([data-theme="light"]) .payment-proof-preview__dialog {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+:global([data-theme="light"]) .payment-proof-preview__header {
+  border-bottom-color: #e2e8f0;
+}
+
+:global([data-theme="light"]) .payment-proof-preview__body {
+  background: #f8fafc;
 }
 </style>

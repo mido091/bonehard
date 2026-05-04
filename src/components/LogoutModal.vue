@@ -88,4 +88,46 @@ async function handleConfirm() {
 .logout-modal-actions button {
   flex: 1;
 }
+
+:global([data-theme="light"]) .logout-modal-overlay {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+:global([data-theme="light"]) .logout-modal-card {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+:global([data-theme="light"]) .logout-modal-title {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .logout-modal-copy {
+  color: #475569;
+}
+
+:global([data-theme="light"]) .logout-modal-actions .admin-link-button {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+:global([data-theme="light"]) .logout-modal-actions .admin-link-button:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .logout-modal-actions .admin-danger-button {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+:global([data-theme="light"]) .logout-modal-actions .admin-danger-button:hover {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+}
 </style>

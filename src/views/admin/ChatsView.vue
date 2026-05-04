@@ -1046,4 +1046,223 @@ onBeforeUnmount(() => {
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; transform: scale(0.98); }
+
+/* Light theme overrides live here because this view uses scoped CSS.
+   They keep the chat UI crisp without changing chat behavior or layout. */
+:global([data-theme="light"]) .chat-container {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .chat-wrapper.glass-panel {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:global([data-theme="light"]) .chat-sidebar {
+  border-right-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+:global([data-theme="light"]) .sidebar-header h2,
+:global([data-theme="light"]) .header-title,
+:global([data-theme="light"]) .conv-name,
+:global([data-theme="light"]) .sender-name,
+:global([data-theme="light"]) .chat-unselected h3,
+:global([data-theme="light"]) .form-group label,
+:global([data-theme="light"]) .user-item,
+:global([data-theme="light"]) .system-modal-title,
+:global([data-theme="light"]) .modal-header h3 {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .header-subtitle,
+:global([data-theme="light"]) .conv-time,
+:global([data-theme="light"]) .conv-preview,
+:global([data-theme="light"]) .msg-time,
+:global([data-theme="light"]) .empty-list,
+:global([data-theme="light"]) .empty-messages,
+:global([data-theme="light"]) .chat-unselected p,
+:global([data-theme="light"]) .user-info span,
+:global([data-theme="light"]) .system-modal-copy {
+  color: #64748b;
+}
+
+:global([data-theme="light"]) .btn-new-chat,
+:global([data-theme="light"]) .btn-send,
+:global([data-theme="light"]) .btn-primary {
+  background: #b45309;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(180, 83, 9, 0.18);
+}
+
+:global([data-theme="light"]) .btn-send:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+:global([data-theme="light"]) .sidebar-search input,
+:global([data-theme="light"]) .glass-input,
+:global([data-theme="light"]) .composer-inner {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .sidebar-search input::placeholder,
+:global([data-theme="light"]) .composer-input::placeholder,
+:global([data-theme="light"]) .glass-input::placeholder {
+  color: #94a3b8;
+}
+
+:global([data-theme="light"]) .sidebar-search input:focus,
+:global([data-theme="light"]) .glass-input:focus,
+:global([data-theme="light"]) .composer-inner:focus-within {
+  border-color: #b45309;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.12);
+}
+
+:global([data-theme="light"]) .sidebar-tabs,
+:global([data-theme="light"]) .type-selector,
+:global([data-theme="light"]) .users-list {
+  background: #eef2f7;
+}
+
+:global([data-theme="light"]) .tab-btn,
+:global([data-theme="light"]) .type-selector button,
+:global([data-theme="light"]) .btn-secondary {
+  color: #64748b;
+}
+
+:global([data-theme="light"]) .tab-btn.active,
+:global([data-theme="light"]) .type-selector button.active {
+  background: #ffffff;
+  color: #92400e;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+:global([data-theme="light"]) .conv-item:hover,
+:global([data-theme="light"]) .user-item:hover {
+  background: #f1f5f9;
+}
+
+:global([data-theme="light"]) .conv-item.active,
+:global([data-theme="light"]) .user-item.selected {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  box-shadow: inset 0 0 0 1px rgba(180, 83, 9, 0.08);
+}
+
+:global([data-theme="light"]) .conv-avatar,
+:global([data-theme="light"]) .header-avatar,
+:global([data-theme="light"]) .unselected-icon {
+  background: #ffedd5;
+  color: #92400e;
+}
+
+:global([data-theme="light"]) .message-avatar,
+:global([data-theme="light"]) .user-avatar {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+:global([data-theme="light"]) .chat-main {
+  background: #ffffff;
+}
+
+:global([data-theme="light"]) .main-header,
+:global([data-theme="light"]) .main-composer {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+:global([data-theme="light"]) .main-messages {
+  background: #ffffff;
+}
+
+:global([data-theme="light"]) .btn-back-mobile {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+:global([data-theme="light"]) .btn-back-mobile:hover,
+:global([data-theme="light"]) .btn-secondary:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .message-bubble {
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+:global([data-theme="light"]) .message-other .message-bubble {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+:global([data-theme="light"]) .message-mine .message-bubble {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+:global([data-theme="light"]) .composer-input {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .fixed-modal-overlay,
+:global([data-theme="light"]) .system-modal-overlay {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+:global([data-theme="light"]) .fixed-modal-content,
+:global([data-theme="light"]) .system-modal-card {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+:global([data-theme="light"]) .modal-header,
+:global([data-theme="light"]) .modal-footer {
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+
+:global([data-theme="light"]) .modal-footer {
+  background: #f8fafc;
+}
+
+:global([data-theme="light"]) .btn-close {
+  color: #64748b;
+}
+
+:global([data-theme="light"]) .btn-close:hover {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .btn-secondary {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+:global([data-theme="light"]) .system-modal-actions .admin-link-button {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+:global([data-theme="light"]) .system-modal-actions .admin-danger-button {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+:global([data-theme="light"]) .system-modal-actions .admin-danger-button:hover {
+  background: #fee2e2;
+  color: #991b1b;
+}
 </style>

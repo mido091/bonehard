@@ -159,6 +159,80 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
   color: var(--color-text-strong);
 }
 
+:global([data-theme="light"]) .custom-modal-overlay {
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+:global([data-theme="light"]) .custom-modal-content {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:global([data-theme="light"]) .modal-icon-wrapper {
+  background: #f1f5f9;
+}
+
+:global([data-theme="light"]) .modal-title {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .modal-message {
+  color: #475569;
+}
+
+:global([data-theme="light"]) .text-primary {
+  color: #b45309;
+}
+
+:global([data-theme="light"]) .text-danger {
+  color: #dc2626;
+}
+
+:global([data-theme="light"]) .btn-cancel {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+:global([data-theme="light"]) .btn-cancel:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .btn-confirm {
+  background: #b45309;
+  color: #ffffff;
+}
+
+:global([data-theme="light"]) .btn-confirm:hover {
+  background: #92400e;
+}
+
+:global([data-theme="light"]) .alert .btn-confirm {
+  background: #15803d;
+  color: #ffffff;
+}
+
+:global([data-theme="light"]) .alert .btn-confirm:hover {
+  background: #166534;
+}
+
+:global([data-theme="light"]) .btn-danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+:global([data-theme="light"]) .btn-danger:hover {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.3s ease; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; }
 .modal-fade-enter-active .custom-modal-content { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }

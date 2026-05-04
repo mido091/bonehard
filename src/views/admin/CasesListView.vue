@@ -1,11 +1,12 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import { api } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 
 const { showConfirm } = useConfirmDialog();
+const router = useRouter();
 
 const officialStatuses = ['New', 'In Progress', 'Completed'];
 const statusProgressMap = {
@@ -159,6 +160,11 @@ function toggleActionMenu(id) {
   actionMenuId.value = actionMenuId.value === id ? null : id;
 }
 
+function openCaseDetails(id) {
+  actionMenuId.value = null;
+  router.push(`/admin/cases/${id}`);
+}
+
 async function updateCaseStatus(item, statusName) {
   const response = await api.patch(`/api/cases/${item.id}/status`, { statusName });
   const updated = normalizeCase(response.data);
@@ -272,15 +278,25 @@ onMounted(async () => {
       <p v-else-if="error" class="admin-error">{{ error }}</p>
 
       <div v-else-if="viewMode === 'card'" class="case-card-grid">
-        <article v-for="item in cases" :key="item.id" class="case-card">
+        <article
+          v-for="item in cases"
+          :key="item.id"
+          class="case-card case-card--interactive"
+          role="link"
+          tabindex="0"
+          :aria-label="`Open details for ${item.name}`"
+          @click="openCaseDetails(item.id)"
+          @keydown.enter.prevent="openCaseDetails(item.id)"
+          @keydown.space.prevent="openCaseDetails(item.id)"
+        >
           <span class="case-status" :style="{ '--status-color': item.statusColor }">{{ item.statusName }}</span>
-          <RouterLink :to="`/admin/cases/${item.id}`"><h3>{{ item.name }}</h3></RouterLink>
+          <h3 class="case-click-title">{{ item.name }}</h3>
           <p>{{ item.targetName || 'No target assigned' }}</p>
           <div class="case-progress">
             <span :style="{ width: `${statusProgressPercent(item)}%` }"></span>
           </div>
           <small class="case-progress__label">{{ statusProgressPercent(item) }}% by status</small>
-          <div class="case-options">
+          <div class="case-options" @click.stop @keydown.stop>
             <button class="case-options__trigger" type="button" aria-label="Case options" @click="toggleActionMenu(item.id)">
               <span></span><span></span><span></span>
             </button>
@@ -316,8 +332,18 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in cases" :key="item.id">
-              <td data-label="Name"><RouterLink :to="`/admin/cases/${item.id}`">{{ item.name }}</RouterLink></td>
+            <tr
+              v-for="item in cases"
+              :key="item.id"
+              class="case-row case-row--interactive"
+              role="link"
+              tabindex="0"
+              :aria-label="`Open details for ${item.name}`"
+              @click="openCaseDetails(item.id)"
+              @keydown.enter.prevent="openCaseDetails(item.id)"
+              @keydown.space.prevent="openCaseDetails(item.id)"
+            >
+              <td data-label="Name"><span class="case-row__name">{{ item.name }}</span></td>
               <td data-label="Status"><span class="case-status" :style="{ '--status-color': item.statusColor }">{{ item.statusName }}</span></td>
               <td data-label="Client">{{ item.targetName || '-' }}</td>
               <td data-label="Due Date">{{ formatDate(item.estimatedCompletionDate) }}</td>
@@ -326,7 +352,7 @@ onMounted(async () => {
                 <small class="case-progress__label">{{ statusProgressPercent(item) }}% by status</small>
               </td>
               <td data-label="Options">
-                <div class="case-options">
+                <div class="case-options" @click.stop @keydown.stop>
                   <button class="case-options__trigger" type="button" aria-label="Case options" @click="toggleActionMenu(item.id)">
                     <span></span><span></span><span></span>
                   </button>
@@ -389,6 +415,37 @@ onMounted(async () => {
   transition: color 180ms ease;
 }
 
+.case-card--interactive,
+.case-row--interactive {
+  cursor: pointer;
+}
+
+.case-card--interactive {
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.case-card--interactive:hover,
+.case-row--interactive:hover {
+  border-color: rgba(var(--rgb-accent), 0.36);
+}
+
+.case-card--interactive:focus-visible,
+.case-row--interactive:focus-visible {
+  outline: 2px solid rgba(var(--rgb-accent), 0.72);
+  outline-offset: 3px;
+}
+
+.case-click-title,
+.case-row__name {
+  color: var(--color-text-strong);
+  font-weight: 800;
+}
+
+.case-row__name {
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .admin-table-wrap:has(.case-options__menu) {
   overflow: visible;
 }
@@ -402,6 +459,7 @@ onMounted(async () => {
   position: relative;
   display: inline-flex;
   justify-content: flex-end;
+  cursor: default;
 }
 
 .case-options:has(.case-options__menu) {

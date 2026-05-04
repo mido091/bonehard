@@ -250,4 +250,48 @@ onMounted(loadOffer);
   .payment-modal__footer button { width: 100%; }
   .payment-destinations { grid-template-columns: 1fr; }
 }
+
+:global([data-theme="light"]) .chat-offer-hero,
+:global([data-theme="light"]) .chat-plan-card {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+:global([data-theme="light"]) .chat-offer-hero p:not(.admin-kicker),
+:global([data-theme="light"]) .chat-plan-card__copy,
+:global([data-theme="light"]) .chat-plan-card__features li {
+  color: #475569;
+}
+
+:global([data-theme="light"]) .chat-plan-price strong {
+  color: #b45309;
+}
+
+:global([data-theme="light"]) .payment-modal-backdrop {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+:global([data-theme="light"]) .payment-modal {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+:global([data-theme="light"]) .payment-modal__header h3 {
+  color: #0f172a;
+}
+
+:global([data-theme="light"]) .payment-destinations div {
+  background: #f8fafc;
+}
+
+:global([data-theme="light"]) .payment-destinations span {
+  color: #64748b;
+}
+
+:global([data-theme="light"]) .payment-destinations strong {
+  color: #0f172a;
+}
 </style>

@@ -7942,3 +7942,351 @@ a {
     padding-inline: 8px !important;
   }
 }
+
+/* Light theme consistency layer
+   Keeps admin/user work surfaces visually aligned when individual views still
+   contain dark-mode defaults or local scoped styles. */
+[data-theme="light"] {
+  --admin-light-page: #f8fafc;
+  --admin-light-surface: #ffffff;
+  --admin-light-modal: #ffffff;
+  --admin-light-surface-soft: #f1f5f9;
+  --admin-light-surface-muted: #eef2f7;
+  --admin-light-overlay: rgba(15, 23, 42, 0.42);
+  --admin-light-border: rgba(15, 23, 42, 0.12);
+  --admin-light-border-strong: rgba(180, 83, 9, 0.22);
+  --admin-light-text: #0f172a;
+  --admin-light-muted: #64748b;
+  --admin-light-accent: #b45309;
+  --admin-light-danger: #b91c1c;
+  --admin-light-danger-bg: #fef2f2;
+  --admin-light-danger-border: #fecaca;
+  --admin-light-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  --admin-light-modal-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="light"] :is(
+  .admin-shell,
+  .user-admin-shell,
+  .admin-main,
+  .admin-content,
+  .chat-offer-page,
+  .payments-page
+) {
+  background: var(--admin-light-page) !important;
+  color: var(--admin-light-text) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-panel,
+  .admin-card,
+  .admin-stat-card,
+  .case-card,
+  .order-card,
+  .payment-card,
+  .chat-offer-hero,
+  .chat-plan-card,
+  .ops-hero,
+  .ops-kpi,
+  .ops-panel,
+  .message-card,
+  .settings-card,
+  .glass-panel,
+  .info-section,
+  .user-order-detail
+) {
+  border-color: var(--admin-light-border) !important;
+  background: var(--admin-light-surface) !important;
+  color: var(--admin-light-text) !important;
+  box-shadow: var(--admin-light-shadow) !important;
+}
+
+[data-theme="light"] :is(
+  .payment-grid div,
+  .payment-destinations div,
+  .ops-list__item,
+  .chat-list__item,
+  .admin-filter-grid,
+  .admin-form-section,
+  .task-create-form,
+  .case-tabs,
+  .cases-tabs,
+  .chat-thread header,
+  .chat-compose,
+  .payment-proof-preview__body
+) {
+  border-color: var(--admin-light-border) !important;
+  background: var(--admin-light-surface-soft) !important;
+  color: var(--admin-light-text) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-kicker,
+  .admin-muted,
+  .payment-grid span,
+  .payment-proof span,
+  .payment-destinations span,
+  .chat-offer-hero p:not(.admin-kicker),
+  .chat-plan-card__copy,
+  .ops-kpi__body small,
+  .ops-list__item small,
+  .ops-generated,
+  .ops-chip
+) {
+  color: var(--admin-light-muted) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-topbar,
+  .admin-sidebar,
+  .notification-bell__panel,
+  .logout-modal-card,
+  .users-modal,
+  .admin-modal,
+  .modal,
+  .modal-content,
+  .modal__content,
+  .confirm-dialog,
+  .dialog-panel,
+  .custom-modal-content,
+  .payment-modal,
+  .payment-proof-preview__dialog,
+  .fixed-modal-content,
+  .system-modal-card,
+  .chat-new-conversation-modal,
+  .settings-modal,
+  .rte-link-modal,
+  .rte-wrap .ql-toolbar .ql-picker-options,
+  .custom-select__menu,
+  .admin-select-dropdown,
+  .country-dropdown
+) {
+  border-color: var(--admin-light-border) !important;
+  background: var(--admin-light-modal) !important;
+  color: var(--admin-light-text) !important;
+  box-shadow: var(--admin-light-modal-shadow) !important;
+}
+
+[data-theme="light"] :is(
+  .users-modal__header,
+  .users-modal__footer,
+  .modal-header,
+  .modal__header,
+  .modal-footer,
+  .modal__footer,
+  .payment-modal__header,
+  .payment-modal__footer,
+  .payment-proof-preview__header,
+  .notification-bell__header,
+  .admin-table th,
+  .admin-table td
+) {
+  border-color: var(--admin-light-border) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-field input,
+  .admin-field select,
+  .admin-field textarea,
+  .admin-compact-input,
+  .admin-compact-select,
+  .auth-input,
+  .order-form__input,
+  .chat-compose textarea,
+  .chat-input-row input,
+  .glass-input,
+  .rte-link-modal__input,
+  .search-input,
+  .number-input
+) {
+  border-color: var(--admin-light-border) !important;
+  background: #ffffff !important;
+  color: var(--admin-light-text) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] :is(
+  .admin-field input,
+  .admin-field select,
+  .admin-field textarea,
+  .admin-compact-input,
+  .admin-compact-select,
+  .auth-input,
+  .order-form__input,
+  .chat-compose textarea,
+  .chat-input-row input,
+  .glass-input,
+  .rte-link-modal__input,
+  .search-input,
+  .number-input
+)::placeholder {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] :is(
+  .admin-link-button,
+  .admin-topbar-action-btn,
+  .notification-bell__button,
+  .theme-toggle-btn,
+  .theme-toggle-button,
+  .users-modal__close,
+  .btn-cancel,
+  .btn-secondary,
+  .btn-close,
+  .rte-link-modal__close,
+  .payments-status-filter,
+  .payments-status-filter__button
+) {
+  border-color: var(--admin-light-border) !important;
+  background: var(--admin-light-surface) !important;
+  color: var(--admin-light-text) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-link-button:hover,
+  .admin-topbar-action-btn:hover,
+  .notification-bell__button:hover,
+  .theme-toggle-btn:hover,
+  .theme-toggle-button:hover,
+  .btn-cancel:hover,
+  .btn-secondary:hover,
+  .btn-close:hover,
+  .rte-link-modal__close:hover,
+  .payments-status-filter__button:hover
+) {
+  border-color: var(--admin-light-border-strong) !important;
+  background: rgba(180, 83, 9, 0.07) !important;
+  color: var(--admin-light-accent) !important;
+}
+
+[data-theme="light"] :is(
+  .admin-primary-button,
+  .payments-status-filter__button--active,
+  .auth-submit,
+  .fp-btn
+) {
+  border-color: var(--admin-light-accent) !important;
+  background: var(--admin-light-accent) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] :is(
+  .payment-modal-backdrop,
+  .payment-proof-preview,
+  .users-modal-backdrop,
+  .modal-backdrop,
+  .admin-modal-backdrop,
+  .logout-modal-overlay,
+  .custom-modal-overlay,
+  .fixed-modal-overlay,
+  .system-modal-overlay,
+  .rte-link-overlay,
+  .confirm-backdrop,
+  .dialog-backdrop
+) {
+  background: var(--admin-light-overlay) !important;
+  backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] :is(
+  .modal-title,
+  .modal-header h3,
+  .modal__header h3,
+  .custom-modal-content h3,
+  .custom-modal-content .modal-title,
+  .logout-modal-title,
+  .system-modal-title,
+  .payment-modal__header h3,
+  .payment-proof-preview__header h3,
+  .notification-bell__header p,
+  .notification-bell__content strong,
+  .rte-link-modal__header
+) {
+  color: var(--admin-light-text) !important;
+}
+
+[data-theme="light"] :is(
+  .modal-message,
+  .logout-modal-copy,
+  .system-modal-copy,
+  .notification-bell__content span,
+  .notification-bell__content time,
+  .notification-bell__state,
+  .rte-wrap .ql-toolbar .ql-picker-label,
+  .rte-wrap .ql-editor,
+  .rte-wrap .ql-editor p,
+  .rte-wrap .ql-editor li
+) {
+  color: var(--admin-light-muted) !important;
+}
+
+[data-theme="light"] :is(
+  .modal-icon-wrapper,
+  .type-selector,
+  .users-list,
+  .payment-review-note,
+  .image-upload-box,
+  .rte-wrap .ql-editor pre.ql-syntax
+) {
+  border-color: var(--admin-light-border) !important;
+  background: var(--admin-light-surface-soft) !important;
+}
+
+[data-theme="light"] .image-upload-box:hover {
+  border-color: var(--admin-light-border-strong) !important;
+  background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .image-upload-overlay {
+  background: rgba(15, 23, 42, 0.62) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] :is(
+  .btn-confirm,
+  .rte-link-modal__btn--primary
+) {
+  border-color: var(--admin-light-accent) !important;
+  background: var(--admin-light-accent) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] :is(
+  .btn-danger,
+  .admin-danger-button,
+  .rte-link-modal__btn--danger,
+  .notification-bell__delete
+) {
+  border-color: var(--admin-light-danger-border) !important;
+  background: var(--admin-light-danger-bg) !important;
+  color: var(--admin-light-danger) !important;
+}
+
+[data-theme="light"] :is(
+  .chat-plan-price strong,
+  .chat-offer-state,
+  .ops-mini-link,
+  .legend-cases
+) {
+  color: var(--admin-light-accent) !important;
+}
+
+[data-theme="light"] .payment-status--pending {
+  background: rgba(180, 83, 9, 0.12) !important;
+  color: #92400e !important;
+}
+
+[data-theme="light"] .payment-status--approved {
+  background: rgba(22, 163, 74, 0.12) !important;
+  color: #15803d !important;
+}
+
+[data-theme="light"] .payment-status--rejected {
+  background: rgba(220, 38, 38, 0.11) !important;
+  color: #b91c1c !important;
+}
+
+[data-theme="light"] :is(.chat-bubble--admin, .chat-bubble--user) {
+  border-color: var(--admin-light-border) !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06) !important;
+}

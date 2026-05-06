@@ -13,6 +13,7 @@ const files = ref([]);
 const loading = ref(true);
 const error = ref('');
 const exporting = ref(false);
+const exportingCsv = ref(false);
 
 // Team Notes
 const teamNotes = ref([]);
@@ -110,6 +111,28 @@ async function exportPackage() {
   }
 }
 
+async function exportCsvPackage() {
+  if (!item.value) return;
+  exportingCsv.value = true;
+  error.value = '';
+
+  try {
+    const { blob, fileName } = await api.download(`/api/cases/${route.params.id}/export-csv`, `${item.value.name || 'case'}.zip`);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    exportingCsv.value = false;
+  }
+}
+
 async function loadCaseDetails() {
   const [caseResponse, usersResponse, settingsResponse, filesResponse, notesResponse] = await Promise.all([
     api.get(`/api/cases/${route.params.id}`),
@@ -185,6 +208,10 @@ onMounted(async () => {
           <button class="premium-btn-secondary" type="button" :disabled="exporting" @click="exportPackage">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             {{ exporting ? 'Preparing...' : 'Export as PDF' }}
+          </button>
+          <button class="premium-btn-secondary" type="button" :disabled="exportingCsv" @click="exportCsvPackage">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            {{ exportingCsv ? 'Preparing...' : 'Export as CSV' }}
           </button>
           <RouterLink class="premium-btn-secondary" to="/admin/cases">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>

@@ -11,6 +11,7 @@ const dashboard = ref(null);
 const loading = ref(true);
 const error = ref('');
 const exporting = ref(false);
+const exportingCsv = ref(false);
 const dashboardSurface = ref(null);
 
 const summary = computed(() => dashboard.value?.summary || {});
@@ -189,6 +190,27 @@ async function exportPDF() {
   }
 }
 
+async function exportCSV() {
+  exportingCsv.value = true;
+  error.value = '';
+
+  try {
+    const { blob, fileName } = await api.download('/api/admin/dashboard/export-csv', `operations_dashboard_${fileDateStr.value}.zip`);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    error.value = err.message || 'Failed to export dashboard CSV';
+  } finally {
+    exportingCsv.value = false;
+  }
+}
+
 function hasUnsupportedColorFunction(value) {
   return typeof value === 'string' && /(^|[\s,(])color\(/i.test(value);
 }
@@ -293,6 +315,9 @@ function statusPercent(value) {
         <RouterLink v-if="isAdmin" class="admin-link-button" to="/admin/users">Manage Users</RouterLink>
         <button class="admin-link-button" type="button" :disabled="exporting || loading" @click="exportPDF">
           {{ exporting ? 'Preparing PDF...' : 'Export Dashboard PDF' }}
+        </button>
+        <button class="admin-link-button" type="button" :disabled="exportingCsv || loading" @click="exportCSV">
+          {{ exportingCsv ? 'Preparing CSV...' : 'Export Dashboard CSV' }}
         </button>
       </div>
     </div>

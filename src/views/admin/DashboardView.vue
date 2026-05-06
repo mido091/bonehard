@@ -195,7 +195,7 @@ async function exportCSV() {
   error.value = '';
 
   try {
-    const { blob, fileName } = await api.download('/api/admin/dashboard/export-csv', `operations_dashboard_${fileDateStr.value}.zip`);
+    const { blob, fileName } = await api.download('/api/admin/dashboard/export-csv', `operations_dashboard_${fileDateStr.value}.csv`);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

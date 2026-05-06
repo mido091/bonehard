@@ -97,7 +97,7 @@ async function exportCsvPackage() {
   error.value = '';
 
   try {
-    const { blob, fileName } = await api.download(`/api/admin/user-orders/${route.params.id}/export-csv`, `${order.value.name || 'order'}.zip`);
+    const { blob, fileName } = await api.download(`/api/admin/user-orders/${route.params.id}/export-csv`, `${order.value.name || 'order'}.csv`);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

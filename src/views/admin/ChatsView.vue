@@ -1,8 +1,11 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { api } from '../../services/api';
 import { getPusherClient, disconnectPusherClient } from '../../services/pusherClient';
 import { authState } from '../../stores/authStore';
+
+const router = useRouter();
 
 // ── State ─────────────────────────────────────────────────────────────────
 const conversations = ref([]);
@@ -254,6 +257,10 @@ onMounted(async () => {
     await loadConversations();
     if (conversations.value[0]) await openConversation(conversations.value[0]);
   } catch (err) {
+    if (authState.user?.role === 'user' && err.status === 403) {
+      router.replace('/dashboard/chats/offer');
+      return;
+    }
     error.value = err.message;
   } finally {
     loading.value = false;

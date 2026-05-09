@@ -4,7 +4,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { API_BASE_URL, api } from '../../services/api';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
+import WorkflowFields from '../../components/admin/WorkflowFields.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+
+// Auto-focus directive for rename inputs
+const vFocus = { mounted: (el) => el.focus() };
 
 const { showConfirm } = useConfirmDialog();
 const route = useRoute();
@@ -18,6 +22,9 @@ const customFields = ref([]);
 const customValues = reactive({});
 const existingFiles = ref([]);
 const selectedUploads = ref([]);
+const savingFileNameId = ref(null);
+const copiedFileId = ref(null);
+const renamingFileId = ref(null);
 const uploadInput = ref(null);
 const saveProgress = ref(0);
 const saveProgressLabel = ref('');
@@ -45,7 +52,6 @@ const form = reactive({
   name: '',
   statusId: '',
   startDate: '',
-  estimatedCompletionDate: '',
   targetTime: '',
   description: '',
   clientDescription: '',
@@ -53,6 +59,10 @@ const form = reactive({
   targetId: '',
   projectLeaderId: '',
   teamMemberIds: [],
+  implantSystem: '',
+  implantSystemOther: '',
+  servicesNeeded: [],
+  servicesNeededOther: '',
 });
 
 /**
@@ -71,6 +81,10 @@ function normalizePayload() {
     color: null,
     templateId: null,
     customUid: null,
+    implantSystem: form.implantSystem || null,
+    implantSystemOther: form.implantSystem === 'Other' ? form.implantSystemOther || null : null,
+    servicesNeeded: form.servicesNeeded || [],
+    servicesNeededOther: (form.servicesNeeded || []).includes('Other') ? form.servicesNeededOther || null : null,
     // Send custom field values as a flat map: { fieldKey: value }
     customFieldValues: { ...customValues },
   };
@@ -81,14 +95,17 @@ function fillForm(item) {
     name: item.name || '',
     statusId: item.statusId || '',
     startDate: item.startDate?.slice(0, 10) || '',
-    estimatedCompletionDate: item.estimatedCompletionDate?.slice(0, 10) || '',
-    targetTime: item.targetTime || '',
+    targetTime: item.targetTime?.slice(0, 10) || '',
     description: item.description || '',
     clientDescription: item.clientDescription || '',
     price: item.price ?? '',
     targetId: item.targetId || '',
     projectLeaderId: item.projectLeaderId || '',
     teamMemberIds: item.teamMemberIds || [],
+    implantSystem: item.implantSystem || '',
+    implantSystemOther: item.implantSystemOther || '',
+    servicesNeeded: item.servicesNeeded || [],
+    servicesNeededOther: item.servicesNeededOther || '',
   });
 
   // Pre-fill custom field values from the response
@@ -139,9 +156,49 @@ async function removeExistingFile(fileId) {
   }
 }
 
+async function saveExistingFileName(file) {
+  // file._stem holds the editable part; re-attach the original extension before saving
+  const stem = String(file._stem ?? getStem(file.fileName) ?? '').trim();
+  if (!stem || savingFileNameId.value === file.id) return;
+
+  const ext = getExt(file.fileName);
+  const fileName = stem + ext; // always preserve the extension
+
+  savingFileNameId.value = file.id;
+  error.value = '';
+
+  try {
+    const response = await api.patch(`/api/cases/${route.params.id}/files/${file.id}`, { fileName });
+    existingFiles.value = response.data || existingFiles.value.map((item) =>
+      item.id === file.id ? { ...item, fileName, _stem: stem, updatedAt: new Date().toISOString() } : item
+    );
+  } catch (err) {
+    error.value = err.message || 'Failed to rename file.';
+  } finally {
+    savingFileNameId.value = null;
+  }
+}
+
 function formatFileSize(size) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Returns the file extension (with dot) from a filename, e.g. ".pdf"
+ * Returns '' if there is no extension.
+ */
+function getExt(name) {
+  const match = String(name || '').match(/(\.\w+)$/);
+  return match ? match[1] : '';
+}
+
+/**
+ * Returns the stem (name without extension), e.g. "photo" from "photo.png"
+ */
+function getStem(name) {
+  const ext = getExt(name);
+  return ext ? String(name).slice(0, -ext.length) : String(name || '');
 }
 
 function addUploadFiles(event) {
@@ -154,10 +211,13 @@ function addUploadFiles(event) {
       return;
     }
 
+    const ext = getExt(file.name);
+    const stem = getStem(file.name);
     selectedUploads.value.push({
       id: `${file.name}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() || Math.random()}`,
       file,
-      name: file.name,
+      name: stem,   // editable stem shown in the input
+      ext,          // extension is fixed, appended on save
       size: file.size,
       type: file.type,
       previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
@@ -182,10 +242,22 @@ function fileDownloadUrl(fileId) {
   return `${API_BASE_URL}/api/cases/${route.params.id}/files/${fileId}/download`;
 }
 
+async function copyFileLink(fileId) {
+  try {
+    await navigator.clipboard.writeText(new URL(fileDownloadUrl(fileId), window.location.origin).href);
+    copiedFileId.value = fileId;
+    setTimeout(() => {
+      if (copiedFileId.value === fileId) copiedFileId.value = null;
+    }, 1500);
+  } catch {
+    error.value = 'Could not copy the file link.';
+  }
+}
+
 function buildCaseSaveFormData() {
   const formData = new FormData();
   formData.append('payload', JSON.stringify(normalizePayload()));
-  selectedUploads.value.forEach((item) => formData.append('files', item.file, item.file.name));
+  selectedUploads.value.forEach((item) => formData.append('files', item.file, item.name || item.file.name));
   return formData;
 }
 
@@ -263,12 +335,8 @@ onUnmounted(() => {
           <input v-model="form.startDate" type="date" />
         </label>
         <label class="admin-field">
-          <span>Estimated Completion Date</span>
-          <input v-model="form.estimatedCompletionDate" type="date" />
-        </label>
-        <label class="admin-field">
-          <span>Target Time</span>
-          <AdminSelect v-model="form.targetTime" :options="['Same day', '24 hours', '48 hours', '72 hours', '1 week']" placeholder="Make a selection" />
+          <span>Target Date</span>
+          <input v-model="form.targetTime" type="date" />
         </label>
         <label class="admin-field admin-field--wide">
           <span>Project Notes (Visible to Staff only)</span>
@@ -282,6 +350,12 @@ onUnmounted(() => {
           <span>Price</span>
           <input v-model="form.price" type="number" min="0" step="1" placeholder="0" />
         </label>
+        <WorkflowFields
+          v-model:implant-system="form.implantSystem"
+          v-model:implant-system-other="form.implantSystemOther"
+          v-model:services-needed="form.servicesNeeded"
+          v-model:services-needed-other="form.servicesNeededOther"
+        />
       </fieldset>
 
       <fieldset class="admin-form-section">
@@ -316,22 +390,52 @@ onUnmounted(() => {
             <h4>Uploaded Files</h4>
             <span class="file-count-badge">{{ existingFiles.length }} file{{ existingFiles.length === 1 ? '' : 's' }}</span>
           </header>
-          <div class="case-upload-list">
-            <article v-for="file in existingFiles" :key="file.id" class="case-upload-item">
-              <div class="case-upload-file-icon" :class="{ 'is-pdf': file.mimeType?.includes('pdf'), 'is-img': !file.mimeType?.includes('pdf') }">
-                <svg v-if="file.mimeType?.includes('pdf')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          <div class="file-list">
+            <article v-for="file in existingFiles" :key="file.id" class="file-row">
+              <!-- Icon -->
+              <div class="file-row__icon" :class="file.mimeType?.includes('pdf') ? 'is-pdf' : 'is-doc'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>
-              <div class="case-upload-item__body">
-                <a :href="fileDownloadUrl(file.id)" target="_blank" class="case-upload-download" download :title="file.fileName">{{ file.fileName }}</a>
-                <div class="case-upload-meta">
-                  <span class="file-size">{{ formatFileSize(file.fileSize) }}</span>
-                  <span class="file-date">{{ new Date(file.createdAt).toLocaleDateString() }}</span>
+              <!-- Info -->
+              <div class="file-row__info">
+                <div class="file-row__name-wrap">
+                  <template v-if="renamingFileId === file.id">
+                    <input
+                      :value="file._stem ?? getStem(file.fileName)"
+                      class="file-rename-input"
+                      maxlength="190"
+                      :disabled="savingFileNameId === file.id"
+                      @input="file._stem = $event.target.value"
+                      @blur="saveExistingFileName(file); renamingFileId = null"
+                      @keyup.enter.prevent="saveExistingFileName(file); renamingFileId = null"
+                      @keyup.escape="renamingFileId = null"
+                      v-focus
+                    />
+                    <span class="file-ext-badge">{{ getExt(file.fileName) }}</span>
+                  </template>
+                  <span v-else class="file-name-text">{{ getStem(file.fileName) }}<em class="file-ext-dim">{{ getExt(file.fileName) }}</em></span>
+                </div>
+                <div class="file-row__meta">
+                  <span>{{ formatFileSize(file.fileSize) }}</span>
+                  <span class="meta-sep">·</span>
+                  <span>{{ new Date(file.updatedAt || file.createdAt).toLocaleDateString() }}</span>
+                  <span class="meta-sep">·</span>
+                  <a :href="fileDownloadUrl(file.id)" target="_blank" class="meta-download" download>Download</a>
                 </div>
               </div>
-              <button type="button" class="case-upload-remove" @click="removeExistingFile(file.id)" title="Delete file">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-              </button>
+              <!-- Actions -->
+              <div class="file-row__actions">
+                <button type="button" class="file-action-btn" :class="{ 'is-active': renamingFileId === file.id }" title="Rename" @click="renamingFileId = renamingFileId === file.id ? null : file.id">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button type="button" class="file-action-btn" :title="copiedFileId === file.id ? 'Copied!' : 'Copy link'" @click="copyFileLink(file.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span v-if="copiedFileId === file.id" class="copied-feedback">Copied!</span>
+                </button>
+                <button type="button" class="file-action-btn is-danger" title="Delete" @click="removeExistingFile(file.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -361,22 +465,28 @@ onUnmounted(() => {
             <h4>Ready to Upload</h4>
             <span class="file-count-badge">{{ selectedUploads.length }} file{{ selectedUploads.length === 1 ? '' : 's' }}</span>
           </header>
-          <div class="case-upload-list">
-            <article v-for="item in selectedUploads" :key="item.id" class="case-upload-item is-new">
-              <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.name" class="case-upload-img-preview" />
-              <div v-else class="case-upload-file-icon is-pdf">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <div class="file-list">
+            <article v-for="item in selectedUploads" :key="item.id" class="file-row is-new">
+              <div class="file-row__icon" :class="item.previewUrl ? 'is-img' : 'is-doc'">
+                <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.name" />
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>
-              <div class="case-upload-item__body">
-                <strong :title="item.name">{{ item.name }}</strong>
-                <div class="case-upload-meta">
-                  <span class="file-size">{{ formatFileSize(item.size) }}</span>
-                  <span class="file-status">Pending Upload</span>
+              <div class="file-row__info">
+                <div class="file-row__name-wrap">
+                  <input v-model.trim="item.name" class="file-rename-input" maxlength="190" />
+                  <span class="file-ext-badge">{{ item.ext }}</span>
+                </div>
+                <div class="file-row__meta">
+                  <span>{{ formatFileSize(item.size) }}</span>
+                  <span class="meta-sep">·</span>
+                  <span class="badge-pending">Pending Upload</span>
                 </div>
               </div>
-              <button type="button" class="case-upload-remove" @click="removeUploadFile(item.id)" title="Remove file">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              </button>
+              <div class="file-row__actions">
+                <button type="button" class="file-action-btn" title="Remove" @click="removeUploadFile(item.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -415,3 +525,128 @@ onUnmounted(() => {
     </form>
   </section>
 </template>
+
+<style scoped>
+/* ── File list ─────────────────────────────────── */
+.file-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  background: rgba(var(--rgb-foreground), 0.03);
+  min-width: 0;
+}
+
+.file-row__icon {
+  flex: 0 0 36px; width: 36px; height: 36px;
+  border-radius: 8px;
+  background: rgba(var(--rgb-foreground), 0.08);
+  display: grid; place-items: center; overflow: hidden;
+}
+.file-row__icon.is-pdf { background: rgba(248,113,113,0.15); color: #f87171; }
+.file-row__icon.is-img { background: rgba(139,92,246,0.15); color: #a78bfa; }
+.file-row__icon.is-doc { background: rgba(var(--rgb-foreground),0.08); color: rgba(var(--rgb-foreground),0.5); }
+.file-row__icon svg { width: 18px; height: 18px; }
+.file-row__icon img { width: 100%; height: 100%; object-fit: cover; }
+
+.file-row__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+
+.file-row__name-wrap { 
+  display: flex; 
+  align-items: center; 
+  gap: 0.5rem; 
+  min-width: 0;
+  flex-wrap: wrap; 
+}
+
+.file-name-text {
+  font-weight: 700; font-size: 0.95rem;
+  color: var(--color-text-strong);
+  text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.file-name-text:hover { text-decoration: underline; }
+.file-ext-dim { font-style: normal; font-weight: 400; color: rgba(var(--rgb-foreground),0.4); font-size: 0.82rem; }
+
+.file-rename-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(var(--rgb-accent), 0.5);
+  border-radius: 8px;
+  background: rgba(var(--rgb-background), 0.4);
+  color: var(--color-text-strong);
+  font: inherit; font-weight: 700; font-size: 0.9rem;
+}
+.file-rename-input:focus { outline: 2px solid rgba(var(--rgb-accent), 0.3); }
+
+.file-ext-badge {
+  flex: 0 0 auto;
+  padding: 0.18rem 0.45rem;
+  border-radius: 5px;
+  background: rgba(var(--rgb-foreground), 0.08);
+  color: rgba(var(--rgb-foreground), 0.45);
+  font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  white-space: nowrap; user-select: none;
+}
+
+.file-row__meta {
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+  font-size: 0.75rem; color: rgba(var(--rgb-foreground), 0.45);
+}
+.meta-sep { opacity: 0.4; }
+.meta-download { color: rgba(var(--rgb-accent), 0.8); text-decoration: none; font-weight: 600; }
+.meta-download:hover { text-decoration: underline; }
+.badge-pending { color: #fbbf24; font-weight: 600; }
+.badge-saved   { color: rgba(var(--rgb-accent), 0.9); font-weight: 600; }
+
+.file-row__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 0.35rem; }
+
+.file-action-btn {
+  position: relative;
+  display: inline-grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  border-radius: 7px;
+  background: rgba(var(--rgb-foreground), 0.04);
+  color: rgba(var(--rgb-foreground), 0.6);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.file-action-btn svg { width: 15px; height: 15px; }
+.file-action-btn:hover { background: rgba(var(--rgb-foreground),0.1); color: var(--color-text-strong); }
+.file-action-btn.is-active {
+  background: rgba(var(--rgb-accent), 0.15);
+  border-color: rgba(var(--rgb-accent), 0.4);
+  color: rgba(var(--rgb-accent), 0.9);
+}
+.file-action-btn.is-danger:hover {
+  background: rgba(248,113,113,0.15);
+  border-color: rgba(248,113,113,0.3);
+  color: #f87171;
+}
+.file-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.copied-feedback {
+  position: absolute; bottom: 120%; left: 50%;
+  transform: translateX(-50%);
+  background: #34d399; color: #000;
+  padding: 0.2rem 0.5rem; border-radius: 5px;
+  font-size: 0.7rem; font-weight: 800;
+  pointer-events: none; white-space: nowrap;
+  animation: popFloatFade 1.5s ease-out forwards;
+  z-index: 10; box-shadow: 0 4px 12px rgba(52,211,153,0.3);
+}
+@keyframes popFloatFade {
+  0%   { opacity: 0; transform: translate(-50%, 8px) scale(0.8); }
+  15%  { opacity: 1; transform: translate(-50%, 0)   scale(1);   }
+  80%  { opacity: 1; transform: translate(-50%, 0)   scale(1);   }
+  100% { opacity: 0; transform: translate(-50%, -12px) scale(0.9); }
+}
+</style>

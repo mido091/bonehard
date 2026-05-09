@@ -4,16 +4,10 @@ import { RouterLink, useRouter } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import { api } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const { showConfirm } = useConfirmDialog();
 const router = useRouter();
-
-const officialStatuses = ['New', 'In Progress', 'Completed'];
-const statusProgressMap = {
-  New: 10,
-  'In Progress': 55,
-  Completed: 100,
-};
 
 const filters = reactive({
   search: '',
@@ -38,37 +32,24 @@ const error = ref('');
 const viewMode = ref('list');
 const filtersOpen = ref(false);
 const actionMenuId = ref(null);
-const quickStatus = ref('all');
+const statusFilterOpen = ref(false);
 
 const totalPages = computed(() => Math.max(Math.ceil(meta.value.total / meta.value.perPage), 1));
-
-function normalizeStatusName(value) {
-  if (officialStatuses.includes(value)) return value;
-
-  const text = String(value || '').toLowerCase();
-  if (['completed', 'delivered', 'closed'].some((token) => text.includes(token))) return 'Completed';
-  if (['progress', 'planning', 'approved', 'guide', 'qc', 'hold', 'printing', 'shipping'].some((token) => text.includes(token))) {
-    return 'In Progress';
+const selectedStatusLabel = computed(() => {
+  if (!filters.statusIds.length) return 'All Statuses';
+  if (filters.statusIds.length === 1) {
+    const selected = statuses.value.find((status) => Number(status.id) === Number(filters.statusIds[0]));
+    return selected?.name || '1 Status';
   }
-
-  return 'New';
-}
+  return `${filters.statusIds.length} Statuses`;
+});
 
 function normalizeCase(item) {
-  return {
-    ...item,
-    statusName: normalizeStatusName(item.statusName),
-  };
+  return { ...item };
 }
 
-function statusOptionsFor(item) {
-  const current = normalizeStatusName(item.statusName);
-  const currentIndex = officialStatuses.indexOf(current);
-  return officialStatuses.slice(currentIndex + 1);
-}
-
-function statusProgressPercent(item) {
-  return statusProgressMap[normalizeStatusName(item.statusName)] || 0;
+function progressForCase(item) {
+  return statusProgressPercent(item.statusName, item.progressPercentage);
 }
 
 function queryString() {
@@ -114,23 +95,9 @@ function changePage(nextPage) {
   loadCases();
 }
 
-function toggleStatus(id) {
-  const value = Number(id);
-  quickStatus.value = 'all';
-  if (filters.statusIds.includes(value)) {
-    filters.statusIds = filters.statusIds.filter((item) => item !== value);
-  } else {
-    filters.statusIds = [...filters.statusIds, value];
-  }
-}
-
-function applyQuickStatus(name) {
-  quickStatus.value = name;
-  filters.statusIds = [];
-  if (name !== 'all') {
-    const status = statuses.value.find((item) => item.name === name);
-    if (status) filters.statusIds = [status.id];
-  }
+function applyQuickStatus(statusId = null) {
+  filters.statusIds = statusId ? [Number(statusId)] : [];
+  statusFilterOpen.value = false;
   applyFilters();
 }
 
@@ -158,20 +125,12 @@ function formatDate(value) {
 
 function toggleActionMenu(id) {
   actionMenuId.value = actionMenuId.value === id ? null : id;
+  statusFilterOpen.value = false;
 }
 
 function openCaseDetails(id) {
   actionMenuId.value = null;
   router.push(`/admin/cases/${id}`);
-}
-
-async function updateCaseStatus(item, statusName) {
-  const response = await api.patch(`/api/cases/${item.id}/status`, { statusName });
-  const updated = normalizeCase(response.data);
-  item.statusId = updated.statusId;
-  item.statusName = updated.statusName;
-  item.statusColor = updated.statusColor;
-  actionMenuId.value = null;
 }
 
 onMounted(async () => {
@@ -180,7 +139,7 @@ onMounted(async () => {
     api.get('/api/admin/users/options'),
     api.get('/api/admin/teams/options'),
   ]);
-  statuses.value = (statusResponse.data || []).filter((status) => officialStatuses.includes(status.name));
+  statuses.value = statusResponse.data || [];
   users.value = userResponse.data;
   teams.value = teamResponse.data;
   await loadCases();
@@ -196,23 +155,46 @@ onMounted(async () => {
           <h2>Cases</h2>
           <div class="case-status-filter" aria-label="Quick case status filter">
             <button
-              class="admin-filter-chip"
-              :class="{ 'admin-filter-chip--active': quickStatus === 'all' }"
+              class="case-status-filter__trigger"
               type="button"
-              @click="applyQuickStatus('all')"
+              :aria-expanded="statusFilterOpen"
+              @click="statusFilterOpen = !statusFilterOpen"
             >
-              All
+              <span>Case Status</span>
+              <strong>{{ selectedStatusLabel }}</strong>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
-            <button
-              v-for="statusName in officialStatuses"
-              :key="statusName"
-              class="admin-filter-chip"
-              :class="{ 'admin-filter-chip--active': quickStatus === statusName }"
-              type="button"
-              @click="applyQuickStatus(statusName)"
-            >
-              {{ statusName }}
-            </button>
+            <div v-if="statusFilterOpen" class="case-status-filter__menu">
+              <button
+                class="case-status-filter__option"
+                :class="{ 'case-status-filter__option--active': !filters.statusIds.length }"
+                type="button"
+                @click="applyQuickStatus()"
+              >
+                <span class="case-status-filter__dot case-status-filter__dot--all"></span>
+                <span>All Statuses</span>
+                <span v-if="!filters.statusIds.length" class="case-status-filter__check">Selected</span>
+              </button>
+              <button
+                v-for="status in statuses"
+                :key="status.id"
+                class="case-status-filter__option"
+                :class="{ 'case-status-filter__option--active': filters.statusIds.length === 1 && Number(filters.statusIds[0]) === Number(status.id) }"
+                type="button"
+                @click="applyQuickStatus(status.id)"
+              >
+                <span class="case-status-filter__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
+                <span>{{ status.name }}</span>
+                <span
+                  v-if="filters.statusIds.length === 1 && Number(filters.statusIds[0]) === Number(status.id)"
+                  class="case-status-filter__check"
+                >
+                  Selected
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -256,14 +238,19 @@ onMounted(async () => {
               <span>Project Leader</span>
               <AdminSelect v-model="filters.projectLeaderId" :options="users" placeholder="All Leaders" class="glass-input" />
             </label>
+
+            <label class="admin-field">
+              <span>Case Status</span>
+              <AdminSelect v-model="filters.statusIds" :options="statuses" multiple placeholder="All Statuses" class="glass-input" />
+            </label>
             
             <label class="admin-field">
-              <span>From Due Date</span>
+              <span>From Target Date</span>
               <input v-model="filters.fromDueDate" type="date" class="glass-input" />
             </label>
             
             <label class="admin-field">
-              <span>To Due Date</span>
+              <span>To Target Date</span>
               <input v-model="filters.toDueDate" type="date" class="glass-input" />
             </label>
           </div>
@@ -293,9 +280,9 @@ onMounted(async () => {
           <h3 class="case-click-title">{{ item.name }}</h3>
           <p>{{ item.targetName || 'No target assigned' }}</p>
           <div class="case-progress">
-            <span :style="{ width: `${statusProgressPercent(item)}%` }"></span>
+            <span :style="{ width: `${progressForCase(item)}%` }"></span>
           </div>
-          <small class="case-progress__label">{{ statusProgressPercent(item) }}% by status</small>
+          <small class="case-progress__label">{{ progressForCase(item) }}% by status</small>
           <div class="case-options" @click.stop @keydown.stop>
             <button class="case-options__trigger" type="button" aria-label="Case options" @click="toggleActionMenu(item.id)">
               <span></span><span></span><span></span>
@@ -303,17 +290,6 @@ onMounted(async () => {
             <div v-if="actionMenuId === item.id" class="case-options__menu">
               <RouterLink class="case-options__item" :to="`/admin/cases/${item.id}/edit`">Edit</RouterLink>
               <button class="case-options__item case-options__item--danger" type="button" @click="archiveCase(item.id)">Delete</button>
-              <div class="case-options__divider"></div>
-              <button
-                v-for="statusName in statusOptionsFor(item)"
-                :key="statusName"
-                class="case-options__item"
-                type="button"
-                @click="updateCaseStatus(item, statusName)"
-              >
-                {{ statusName }}
-              </button>
-              <span v-if="!statusOptionsFor(item).length" class="case-options__note">Final status reached</span>
             </div>
           </div>
         </article>
@@ -326,7 +302,7 @@ onMounted(async () => {
               <th><button class="admin-sort-button" type="button" @click="cycleSort('name')">Name</button></th>
               <th><button class="admin-sort-button" type="button" @click="cycleSort('status')">Status</button></th>
               <th><button class="admin-sort-button" type="button" @click="cycleSort('target')">Client</button></th>
-              <th><button class="admin-sort-button" type="button" @click="cycleSort('dueDate')">Due Date</button></th>
+              <th><button class="admin-sort-button" type="button" @click="cycleSort('dueDate')">Target Date</button></th>
               <th>Progress</th>
               <th>Options</th>
             </tr>
@@ -346,10 +322,10 @@ onMounted(async () => {
               <td data-label="Name"><span class="case-row__name">{{ item.name }}</span></td>
               <td data-label="Status"><span class="case-status" :style="{ '--status-color': item.statusColor }">{{ item.statusName }}</span></td>
               <td data-label="Client">{{ item.targetName || '-' }}</td>
-              <td data-label="Due Date">{{ formatDate(item.estimatedCompletionDate) }}</td>
+              <td data-label="Target Date">{{ formatDate(item.targetTime) }}</td>
               <td data-label="Progress">
-                <div class="case-progress"><span :style="{ width: `${statusProgressPercent(item)}%` }"></span></div>
-                <small class="case-progress__label">{{ statusProgressPercent(item) }}% by status</small>
+                <div class="case-progress"><span :style="{ width: `${progressForCase(item)}%` }"></span></div>
+                <small class="case-progress__label">{{ progressForCase(item) }}% by status</small>
               </td>
               <td data-label="Options">
                 <div class="case-options" @click.stop @keydown.stop>
@@ -359,17 +335,6 @@ onMounted(async () => {
                   <div v-if="actionMenuId === item.id" class="case-options__menu">
                     <RouterLink class="case-options__item" :to="`/admin/cases/${item.id}/edit`">Edit</RouterLink>
                     <button class="case-options__item case-options__item--danger" type="button" @click="archiveCase(item.id)">Delete</button>
-                    <div class="case-options__divider"></div>
-                    <button
-                      v-for="statusName in statusOptionsFor(item)"
-                      :key="statusName"
-                      class="case-options__item"
-                      type="button"
-                      @click="updateCaseStatus(item, statusName)"
-                    >
-                      {{ statusName }}
-                    </button>
-                    <span v-if="!statusOptionsFor(item).length" class="case-options__note">Final status reached</span>
                   </div>
                 </div>
               </td>
@@ -389,10 +354,120 @@ onMounted(async () => {
 
 <style scoped>
 .case-status-filter {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
   margin-top: 0.85rem;
+  max-width: min(100%, 24rem);
+}
+
+.case-status-filter__trigger {
+  min-width: min(100vw - 2rem, 22rem);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.15rem 0.9rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.12);
+  border-radius: 0.8rem;
+  background: rgba(var(--rgb-foreground), 0.045);
+  color: var(--color-text-strong);
+  cursor: pointer;
+  padding: 0.8rem 0.95rem;
+  text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.case-status-filter__trigger:hover,
+.case-status-filter__trigger[aria-expanded="true"] {
+  border-color: rgba(var(--rgb-accent), 0.42);
+  background: rgba(var(--rgb-accent), 0.08);
+  box-shadow: 0 16px 38px rgba(var(--rgb-background), 0.18);
+}
+
+.case-status-filter__trigger span {
+  color: rgba(var(--rgb-foreground), 0.52);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.case-status-filter__trigger strong {
+  color: var(--color-text-strong);
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.case-status-filter__trigger svg {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.72;
+}
+
+.case-status-filter__menu {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  left: 0;
+  z-index: 100;
+  width: 100%;
+  max-height: min(22rem, 58vh);
+  overflow: auto;
+  border: 1px solid rgba(var(--rgb-foreground), 0.12);
+  border-radius: 0.85rem;
+  background: rgba(var(--rgb-background), 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(var(--rgb-foreground), 0.06);
+  padding: 0.5rem;
+}
+
+.case-status-filter__option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.7rem;
+  border: 0;
+  border-radius: 0.68rem;
+  background: transparent;
+  color: var(--color-text-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  padding: 0.72rem 0.78rem;
+  text-align: left;
+}
+
+.case-status-filter__option:hover,
+.case-status-filter__option--active {
+  background: rgba(var(--rgb-accent), 0.11);
+}
+
+.case-status-filter__dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--status-color, #60a5fa);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-color, #60a5fa) 18%, transparent);
+}
+
+.case-status-filter__dot--all {
+  background: linear-gradient(135deg, #60a5fa, #34d399);
+  box-shadow: 0 0 0 4px rgba(var(--rgb-accent), 0.14);
+}
+
+.case-status-filter__check {
+  color: rgba(var(--rgb-accent), 0.9);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 :deep(.case-status) {
@@ -511,7 +586,7 @@ onMounted(async () => {
   border: 0;
   border-radius: 0.55rem;
   background: transparent;
-  color: rgba(var(--rgb-foreground), 0.78);
+  color: rgba(255, 255, 255, 0.82);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
@@ -523,7 +598,7 @@ onMounted(async () => {
 .case-options__item:hover,
 .case-options__item--active {
   background: rgba(var(--rgb-accent), 0.1);
-  color: var(--color-text);
+  color: #ffffff;
 }
 
 .case-options__item--danger {
@@ -544,6 +619,39 @@ onMounted(async () => {
   font-weight: 800;
 }
 
+:global(body.light-mode) .case-options__menu,
+:global(.light-mode) .case-options__menu,
+:global([data-theme="light"]) .case-options__menu {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
+}
+
+:global(body.light-mode) .case-options__item,
+:global(.light-mode) .case-options__item,
+:global([data-theme="light"]) .case-options__item {
+  color: #172033;
+}
+
+:global(body.light-mode) .case-options__item:hover,
+:global(.light-mode) .case-options__item:hover,
+:global([data-theme="light"]) .case-options__item:hover {
+  background: rgba(248, 217, 170, 0.5);
+  color: #0f172a;
+}
+
+:global(body.light-mode) .case-options__item--danger,
+:global(.light-mode) .case-options__item--danger,
+:global([data-theme="light"]) .case-options__item--danger {
+  color: #b42318;
+}
+
+:global(body.light-mode) .case-options__divider,
+:global(.light-mode) .case-options__divider,
+:global([data-theme="light"]) .case-options__divider {
+  background: rgba(15, 23, 42, 0.1);
+}
+
 @keyframes case-menu-in {
   from {
     opacity: 0;
@@ -558,6 +666,12 @@ onMounted(async () => {
 @media (max-width: 760px) {
   .case-status-filter {
     width: 100%;
+  }
+
+  .case-status-filter__trigger,
+  .case-status-filter__menu {
+    width: 100%;
+    min-width: 0;
   }
 
   .case-options,

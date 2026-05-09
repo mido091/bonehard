@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { api } from '../../services/api';
+import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const filters = reactive({
   search: '',
@@ -29,6 +30,10 @@ function queryString() {
 function formatDate(value) {
   if (!value) return 'Not Provided';
   return new Intl.DateTimeFormat('en-GB').format(new Date(value));
+}
+
+function progressForOrder(order) {
+  return statusProgressPercent(order.statusName, order.progressPercentage);
 }
 
 async function loadOrders() {
@@ -94,8 +99,11 @@ onMounted(loadOrders);
               <th>Order</th>
               <th>Phone</th>
               <th>Email</th>
+              <th>Status</th>
+              <th>Progress</th>
               <th>Submitted Date</th>
-              <th>Target Time</th>
+              <th>Target Date</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -105,11 +113,23 @@ onMounted(loadOrders);
               </td>
               <td data-label="Phone">{{ order.contactPhone || '-' }}</td>
               <td data-label="Email">{{ order.contactEmail || '-' }}</td>
+              <td data-label="Status">
+                <span class="case-status" :style="{ '--status-color': order.statusColor }">{{ order.statusName || 'Order Received' }}</span>
+              </td>
+              <td data-label="Progress">
+                <div class="case-progress"><span :style="{ width: `${progressForOrder(order)}%` }"></span></div>
+                <small class="case-progress__label">{{ progressForOrder(order) }}%</small>
+              </td>
               <td data-label="Submitted Date">{{ formatDate(order.startDate || order.createdAt) }}</td>
-              <td data-label="Target Time">{{ order.targetTime || '-' }}</td>
+              <td data-label="Target Date">{{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : '-' }}</td>
+              <td data-label="Actions" class="admin-table-actions">
+                <RouterLink :to="`/dashboard/orders/${order.id}/edit`" class="admin-link-button" title="Edit Order">
+                  Edit
+                </RouterLink>
+              </td>
             </tr>
             <tr v-if="!orders.length">
-              <td colspan="5" class="admin-empty">No orders submitted yet.</td>
+              <td colspan="8" class="admin-empty">No orders submitted yet.</td>
             </tr>
           </tbody>
         </table>

@@ -22,6 +22,7 @@ import { useSiteSettings } from '../../composables/useSiteSettings';
 
 // ── Auth Store ───────────────────────────────────────
 import { getDashboardPath, login } from '../../stores/authStore';
+import { isServicesNavigationItem, routeServicesNavigation, safeDashboardRedirect } from '../../utils/publicNavigation';
 
 // ── Static Site Content ─────────────────────────────
 import { authItems, navItems } from '../../data/siteContent';
@@ -46,7 +47,7 @@ function resolveLoginRedirect(user) {
     return getDashboardPath(user);
   }
 
-  if (user.role === 'user') return '/dashboard';
+  if (user.role === 'user') return safeDashboardRedirect(redirect) || '/dashboard';
   if (user.role === 'assistant' && (redirect.startsWith('/admin/users') || redirect.startsWith('/admin/cases/settings') || redirect.startsWith('/admin/settings'))) {
     return '/admin';
   }
@@ -67,8 +68,13 @@ function toggleMenu() {
  * Handles navigation events from the shared header and footer.
  * Section-type items push a hash route; route items use router.push.
  */
-function handleNavigation(item) {
+async function handleNavigation(item) {
   closeMenu();
+
+  if (isServicesNavigationItem(item)) {
+    await routeServicesNavigation(router);
+    return;
+  }
 
   if (item.type === 'section') {
     router.push('/' + item.target);

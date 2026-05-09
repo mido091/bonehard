@@ -328,11 +328,12 @@ watch(() => props.modelValue, (val) => {
   width: 100%;
   max-height: 280px;
   overflow-y: auto;
-  background: rgba(var(--rgb-background), 0.98);
-  backdrop-filter: blur(18px);
-  border: 1px solid rgba(var(--rgb-accent), 0.16);
+  background: rgba(var(--rgb-background), 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(var(--rgb-foreground), 0.12);
   border-radius: 0.78rem;
-  box-shadow: 0 24px 64px rgba(var(--rgb-background), 0.58);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
   z-index: 100;
   padding: 0.4rem;
   scrollbar-width: thin;
@@ -434,11 +435,6 @@ watch(() => props.modelValue, (val) => {
   border-color: rgba(180, 83, 9, 0.6);
   background: rgba(15, 23, 42, 0.06);
   box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.1);
-}
-[data-theme="light"] .admin-select-dropdown {
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14);
 }
 [data-theme="light"] .admin-select-item {
   color: #1e293b;

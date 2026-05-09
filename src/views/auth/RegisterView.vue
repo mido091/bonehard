@@ -9,7 +9,7 @@
 -->
 <script setup>
 import { reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 // ── Shared Components ───────────────────────────────
 import MobileMenu from '../../components/MobileMenu.vue';
@@ -22,12 +22,14 @@ import PasswordInput from '../../components/PasswordInput.vue';
 // ── Services & Stores ───────────────────────────────
 import { api } from '../../services/api';
 import { authState, getDashboardPath } from '../../stores/authStore';
+import { isServicesNavigationItem, routeServicesNavigation, safeDashboardRedirect } from '../../utils/publicNavigation';
 
 // ── Static Site Content ─────────────────────────────
 import { authItems, navItems } from '../../data/siteContent';
 
 // ── State ────────────────────────────────────────────
 const router = useRouter();
+const route = useRoute();
 const loading = ref(false);
 const error = ref('');
 const isMenuOpen = ref(false);
@@ -57,8 +59,13 @@ function toggleMenu() {
 /**
  * Handles navigation events from the shared header and footer.
  */
-function handleNavigation(item) {
+async function handleNavigation(item) {
   closeMenu();
+
+  if (isServicesNavigationItem(item)) {
+    await routeServicesNavigation(router);
+    return;
+  }
 
   if (item.type === 'section') {
     router.push('/' + item.target);
@@ -92,7 +99,8 @@ async function submitRegister() {
     authState.user = response.data.user;
     authState.ready = true;
     localStorage.setItem('bh_auth_ready', 'ok');
-    router.push(getDashboardPath(response.data.user));
+    const redirect = safeDashboardRedirect(route.query.redirect);
+    router.push(redirect || getDashboardPath(response.data.user));
   } catch (err) {
     error.value = err.message || 'Unable to create account';
   } finally {

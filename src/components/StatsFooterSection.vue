@@ -238,6 +238,9 @@ onUnmounted(() => {
       </div>
     </div>
     
-    <p class="footer-note">{{ content.copyright }}</p>
+    <div class="footer-bottom">
+      <p class="footer-note">{{ content.copyright }}</p>
+      <p class="footer-powered">Powered by <a href="https://wa.me/201551683581" target="_blank" rel="noopener noreferrer">Mido</a></p>
+    </div>
   </section>
 </template>

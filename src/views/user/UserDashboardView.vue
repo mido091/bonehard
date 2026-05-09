@@ -47,9 +47,9 @@ const kpis = computed(() => [
     icon: 'contact',
   },
   {
-    label: 'Target Time',
+    label: 'Target Date',
     value: summary.value.withTargetTime || 0,
-    sub: 'orders include expected timing',
+    sub: 'orders include expected date',
     tone: 'violet',
     icon: 'time',
   },
@@ -157,7 +157,7 @@ onMounted(loadDashboard);
             >
               <span>
                 <strong>{{ order.name }}</strong>
-                <small>{{ formatDate(order.startDate || order.createdAt) }} - {{ order.targetTime || 'No target time' }}</small>
+                <small>{{ formatDate(order.startDate || order.createdAt) }} - {{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : 'No target date' }}</small>
               </span>
               <em>{{ order.fileCount }} files</em>
             </RouterLink>

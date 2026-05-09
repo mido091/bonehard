@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from '../../services/api';
 import { getPusherClient } from '../../services/pusherClient';
 import { authState } from '../../stores/authStore';
+import { useRouter } from 'vue-router';
 
 const notifications = ref([]);
 const unreadCount = ref(0);
@@ -12,6 +13,7 @@ const deleteLoadingId = ref(null);
 const open = ref(false);
 const error = ref('');
 const root = ref(null);
+const router = useRouter();
 let pusher = null;
 let channel = null;
 
@@ -77,18 +79,33 @@ async function togglePanel() {
 }
 
 async function markRead(item) {
-  if (!item || item.readAt) return;
+  if (!item) return;
 
-  const previousReadAt = item.readAt;
-  item.readAt = new Date().toISOString();
-  unreadCount.value = Math.max(unreadCount.value - 1, 0);
+  // Optimistically mark as read in local state
+  if (!item.readAt) {
+    const previousReadAt = item.readAt;
+    item.readAt = new Date().toISOString();
+    unreadCount.value = Math.max(unreadCount.value - 1, 0);
 
-  try {
-    await api.patch(`/api/notifications/${item.id}/read`, {});
-  } catch (err) {
-    item.readAt = previousReadAt;
-    unreadCount.value += 1;
-    error.value = err.message || 'Failed to mark notification as read';
+    try {
+      await api.patch(`/api/notifications/${item.id}/read`, {});
+    } catch (err) {
+      item.readAt = previousReadAt;
+      unreadCount.value += 1;
+      error.value = err.message || 'Failed to mark notification as read';
+    }
+  }
+
+  // Handle navigation based on notification type
+  const data = item.dataJson;
+  if (data?.orderId) {
+    const prefix = authState.user?.role === 'admin' || authState.user?.role === 'assistant' ? '/admin/user-orders' : '/dashboard/orders';
+    router.push(`${prefix}/${data.orderId}`);
+    open.value = false;
+  } else if (data?.caseId) {
+    const prefix = authState.user?.role === 'admin' || authState.user?.role === 'assistant' ? '/admin/cases' : '/dashboard/cases';
+    router.push(`${prefix}/${data.caseId}`);
+    open.value = false;
   }
 }
 

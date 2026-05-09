@@ -207,4 +207,6 @@ export const api = {
   patch: (path, body) => apiRequest(path, { method: 'PATCH', body: JSON.stringify(body || {}) }),
   /** DELETE request */
   delete: (path) => apiRequest(path, { method: 'DELETE' }),
+  /** POST with raw FormData (for file uploads, no Content-Type header so browser sets boundary) */
+  postForm: (path, formData) => apiRequest(path, { method: 'POST', body: formData, headers: {} }),
 };

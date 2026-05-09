@@ -160,6 +160,15 @@ const router = createRouter({
           },
         },
         {
+          path: 'orders/:id/edit',
+          name: 'user-order-edit',
+          component: UserOrderFormView,
+          meta: {
+            title: 'Edit Order | BoneHard',
+            description: 'Edit your BoneHard order.',
+          },
+        },
+        {
           path: 'chats/offer',
           name: 'user-chat-offer',
           component: UserChatOfferView,

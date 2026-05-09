@@ -24,6 +24,7 @@ import PhoneInput from '../../components/PhoneInput.vue';
 // ── Services & Stores ───────────────────────────────
 import { api } from '../../services/api';
 import { openLogoutModal } from '../../stores/authStore';
+import { isServicesNavigationItem, routeServicesNavigation } from '../../utils/publicNavigation';
 
 // ── Static Site Content ─────────────────────────────
 import { authItems, navItems } from '../../data/siteContent';
@@ -90,8 +91,13 @@ function toggleMenu() {
  * Handles all navigation events from the header and footer.
  * Section-type items attempt a hash-route push; route items use router.push.
  */
-function handleNavigation(item) {
+async function handleNavigation(item) {
   closeMenu();
+
+  if (isServicesNavigationItem(item)) {
+    await routeServicesNavigation(router);
+    return;
+  }
 
   if (item.type === 'section') {
     // Navigate to the home page with the section hash — the home page handles scrolling

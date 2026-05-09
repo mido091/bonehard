@@ -2,12 +2,16 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { API_BASE_URL, api } from '../../services/api';
+import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
+import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const route = useRoute();
 const order = ref(null);
 const customFields = ref([]);
 const loading = ref(false);
 const error = ref('');
+const copiedFileId = ref(null);
+const computedProgress = computed(() => statusProgressPercent(order.value?.statusName, order.value?.progressPercentage));
 
 const customFieldRows = computed(() => {
   const values = order.value?.customFieldValues || {};
@@ -32,6 +36,22 @@ function formatFileSize(size) {
 
 function fileDownloadUrl(fileId) {
   return `${API_BASE_URL}/api/user/orders/${route.params.id}/files/${fileId}/download`;
+}
+
+function absoluteFileDownloadUrl(fileId) {
+  return new URL(fileDownloadUrl(fileId), window.location.origin).href;
+}
+
+async function copyFileLink(fileId) {
+  try {
+    await navigator.clipboard.writeText(absoluteFileDownloadUrl(fileId));
+    copiedFileId.value = fileId;
+    setTimeout(() => {
+      if (copiedFileId.value === fileId) copiedFileId.value = null;
+    }, 1500);
+  } catch {
+    error.value = 'Could not copy the file link.';
+  }
 }
 
 async function loadOrder() {
@@ -64,6 +84,7 @@ onMounted(loadOrder);
           <h2>{{ order?.name || 'Order' }}</h2>
         </div>
         <div class="admin-toolbar">
+          <RouterLink class="admin-primary-button" :to="`/dashboard/orders/${route.params.id}/edit`">Edit Order</RouterLink>
           <RouterLink class="admin-link-button" to="/dashboard">Back to Orders</RouterLink>
         </div>
       </div>
@@ -75,6 +96,17 @@ onMounted(loadOrder);
         <section class="admin-form-section">
           <legend>Order Summary</legend>
           <dl class="user-order-detail-grid">
+            <div>
+              <dt>Status</dt>
+              <dd>{{ order.statusName || 'Order Received' }}</dd>
+            </div>
+            <div>
+              <dt>Progress</dt>
+              <dd>
+                {{ computedProgress }}%
+                <div class="case-progress user-order-progress"><span :style="{ width: `${computedProgress}%` }"></span></div>
+              </dd>
+            </div>
             <div>
               <dt>Submitted Date</dt>
               <dd>{{ formatDate(order.startDate || order.createdAt) }}</dd>
@@ -88,10 +120,20 @@ onMounted(loadOrder);
               <dd>{{ order.contactEmail || '-' }}</dd>
             </div>
             <div>
-              <dt>Target Time</dt>
-              <dd>{{ order.targetTime || '-' }}</dd>
+              <dt>Target Date</dt>
+              <dd>{{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : '-' }}</dd>
             </div>
           </dl>
+        </section>
+
+        <section class="admin-form-section">
+          <legend>Implant & Services</legend>
+          <WorkflowSummary
+            :implant-system="order.implantSystem"
+            :implant-system-other="order.implantSystemOther"
+            :services-needed="order.servicesNeeded || []"
+            :services-needed-other="order.servicesNeededOther"
+          />
         </section>
 
         <section class="admin-form-section">
@@ -110,6 +152,21 @@ onMounted(loadOrder);
           </dl>
         </section>
 
+        <section v-if="order.notes?.length" class="admin-form-section team-notes-section">
+          <legend>Team Notes</legend>
+          <div class="team-notes-list">
+            <article v-for="note in order.notes" :key="note.id" class="team-note-card">
+              <div class="note-header">
+                <div class="note-author">
+                  <strong>{{ note.createdByName || 'Team' }}</strong>
+                  <span class="note-meta">{{ formatDate(note.updatedAt || note.createdAt) }}</span>
+                </div>
+              </div>
+              <div class="note-content" v-html="note.content"></div>
+            </article>
+          </div>
+        </section>
+
         <section class="admin-form-section">
           <legend>Files</legend>
           <div v-if="order.files?.length" class="case-upload-list">
@@ -122,9 +179,13 @@ onMounted(loadOrder);
               </div>
               <div class="case-upload-item__body">
                 <a :href="fileDownloadUrl(file.id)" target="_blank" class="case-upload-download" download>{{ file.fileName }}</a>
+                <button type="button" class="file-copy-button" :title="copiedFileId === file.id ? 'Copied' : 'Copy download link'" @click="copyFileLink(file.id)">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span v-if="copiedFileId === file.id" class="copied-feedback">Copied!</span>
+                </button>
                 <div class="case-upload-meta">
                   <span>{{ formatFileSize(file.fileSize) }}</span>
-                  <span>{{ formatDate(file.createdAt) }}</span>
+                  <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
                 </div>
               </div>
             </article>
@@ -139,47 +200,228 @@ onMounted(loadOrder);
 <style scoped>
 .user-order-detail {
   display: grid;
-  gap: 1.25rem;
+  gap: 1.5rem;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .user-order-detail-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1rem;
   margin: 0;
 }
 
 .user-order-detail-grid div {
-  min-width: 0;
-  padding: 1rem;
-  border: 1px solid rgba(var(--rgb-accent), 0.1);
-  border-radius: 0.75rem;
-  background: rgba(var(--rgb-foreground), 0.03);
+  padding: 1.25rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  border-radius: 12px;
+  background: rgba(var(--rgb-foreground), 0.02);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.user-order-detail-grid div:hover {
+  background: rgba(var(--rgb-foreground), 0.04);
+  border-color: rgba(var(--rgb-accent), 0.2);
 }
 
 .user-order-detail-grid dt {
-  margin-bottom: 0.4rem;
-  color: rgba(var(--rgb-foreground), 0.55);
-  font-size: 0.78rem;
+  margin-bottom: 0.5rem;
+  color: rgba(var(--rgb-foreground), 0.5);
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .user-order-detail-grid dd {
   margin: 0;
   color: var(--color-text-strong);
+  font-weight: 600;
+  font-size: 1rem;
   overflow-wrap: anywhere;
 }
 
+.user-order-progress {
+  margin-top: 0.6rem;
+  max-width: 12rem;
+}
+
 .user-order-rich-text {
-  color: rgba(var(--rgb-foreground), 0.82);
+  color: rgba(var(--rgb-foreground), 0.85);
+  line-height: 1.8;
+  font-size: 0.95rem;
+}
+
+/* ── Team Notes ───────────────────────────────── */
+.team-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.team-note-card {
+  padding: 1.5rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  border-radius: 16px;
+  background: rgba(var(--rgb-foreground), 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.team-note-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--color-accent);
+  opacity: 0.6;
+}
+
+.note-header {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(var(--rgb-foreground), 0.06);
+}
+
+.note-author {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.note-author strong {
+  color: var(--color-text-strong);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.note-meta {
+  color: rgba(var(--rgb-foreground), 0.45);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.note-content {
+  color: rgba(var(--rgb-foreground), 0.9);
+  font-size: 0.95rem;
   line-height: 1.7;
 }
 
-@media (max-width: 720px) {
-  .user-order-detail-grid {
-    grid-template-columns: 1fr;
-  }
+/* ── Files ────────────────────────────────────── */
+.case-upload-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.case-upload-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  border-radius: 12px;
+  background: rgba(var(--rgb-foreground), 0.03);
+  transition: all 0.2s ease;
+}
+
+.case-upload-item:hover {
+  background: rgba(var(--rgb-foreground), 0.05);
+  border-color: rgba(var(--rgb-accent), 0.3);
+  transform: translateY(-2px);
+}
+
+.case-upload-file-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.case-upload-file-icon.is-pdf { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.case-upload-file-icon.is-img { background: rgba(var(--rgb-accent), 0.12); color: var(--color-accent); }
+
+.case-upload-file-icon svg { width: 22px; height: 22px; }
+
+.case-upload-item__body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.case-upload-download {
+  color: var(--color-text-strong);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.case-upload-download:hover { text-decoration: underline; color: var(--color-accent); }
+
+.file-copy-button {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  border-radius: 8px;
+  background: rgba(var(--rgb-foreground), 0.04);
+  color: rgba(var(--rgb-foreground), 0.6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: grid;
+  place-items: center;
+}
+
+.file-copy-button:hover {
+  background: rgba(var(--rgb-foreground), 0.1);
+  color: var(--color-text-strong);
+  border-color: rgba(var(--rgb-accent), 0.4);
+}
+
+.case-upload-meta {
+  grid-column: 1 / span 2;
+  display: flex;
+  gap: 0.75rem;
+  color: rgba(var(--rgb-foreground), 0.45);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.copied-feedback {
+  position: absolute;
+  bottom: 130%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #10b981;
+  color: white;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  animation: popFloatFade 1.5s ease-out forwards;
+}
+
+@keyframes popFloatFade {
+  0% { opacity: 0; transform: translate(-50%, 10px); }
+  15% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -15px); }
+}
+
+@media (max-width: 600px) {
+  .case-upload-list { grid-template-columns: 1fr; }
 }
 </style>

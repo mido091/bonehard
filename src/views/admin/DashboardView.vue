@@ -459,7 +459,7 @@ function statusPercent(value) {
               <strong>{{ item.name }}</strong>
               <small>{{ item.userName || 'User' }} · {{ item.contactPhone || item.contactEmail || 'No contact' }}</small>
             </span>
-            <span class="case-status">{{ item.statusName || 'New' }}</span>
+            <span class="case-status">{{ item.statusName || 'Order Received' }}</span>
           </RouterLink>
           <p v-if="!(lists.recentOrders || []).length" class="admin-muted">No user orders yet.</p>
         </div>

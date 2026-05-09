@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import AdminSelect from '../../components/admin/AdminSelect.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { api } from '../../services/api';
+import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const { showConfirm } = useConfirmDialog();
 
@@ -11,6 +13,8 @@ const meta = ref({ total: 0, page: 1, perPage: 20 });
 const loading = ref(false);
 const error = ref('');
 const actionLoading = ref('');
+const statuses = ref([]);
+const filters = ref({ statusIds: [] });
 
 const totalPages = computed(() => Math.max(Math.ceil((meta.value.total || 0) / (meta.value.perPage || 20)), 1));
 
@@ -24,7 +28,14 @@ async function loadOrders(page = meta.value.page || 1) {
   error.value = '';
 
   try {
-    const response = await api.get(`/api/admin/user-orders?page=${page}&perPage=${meta.value.perPage || 20}&sortBy=createdAt&sortDir=desc`);
+    const params = new URLSearchParams({
+      page,
+      perPage: meta.value.perPage || 20,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
+    });
+    if (filters.value.statusIds.length) params.set('statusIds', filters.value.statusIds.join(','));
+    const response = await api.get(`/api/admin/user-orders?${params.toString()}`);
     orders.value = response.data || [];
     meta.value = response.meta || meta.value;
   } catch (err) {
@@ -32,6 +43,14 @@ async function loadOrders(page = meta.value.page || 1) {
   } finally {
     loading.value = false;
   }
+}
+
+function progressForOrder(order) {
+  return statusProgressPercent(order.statusName, order.progressPercentage);
+}
+
+async function applyFilters() {
+  await loadOrders(1);
 }
 
 async function changePage(page) {
@@ -54,6 +73,8 @@ async function deleteOrder(order) {
 }
 
 onMounted(async () => {
+  const statusResponse = await api.get('/api/case-statuses');
+  statuses.value = statusResponse.data || [];
   await loadOrders(1);
 });
 </script>
@@ -70,6 +91,14 @@ onMounted(async () => {
           <div class="admin-toolbar__summary">
             <span>{{ meta.total }} orders</span>
           </div>
+          <AdminSelect
+            v-model="filters.statusIds"
+            :options="statuses"
+            multiple
+            placeholder="All Statuses"
+            style="width: min(100%, 260px);"
+            @change="applyFilters"
+          />
         </div>
       </div>
 
@@ -83,6 +112,8 @@ onMounted(async () => {
               <th>Order</th>
               <th>User</th>
               <th>Contact</th>
+              <th>Status</th>
+              <th>Progress</th>
               <th>Date</th>
               <th>Actions</th>
             </tr>
@@ -92,7 +123,7 @@ onMounted(async () => {
               <tr>
                 <td data-label="Order">
                   <strong>{{ order.name }}</strong>
-                  <div class="admin-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">Target: {{ order.targetTime || '-' }}</div>
+                  <div class="admin-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">Target Date: {{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : '-' }}</div>
                 </td>
                 <td data-label="User">
                   <strong>{{ order.createdByName || order.targetName || '-' }}</strong>
@@ -101,6 +132,13 @@ onMounted(async () => {
                 <td data-label="Contact">
                   <strong>{{ order.contactPhone || '-' }}</strong>
                   <div class="admin-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">{{ order.contactEmail || '-' }}</div>
+                </td>
+                <td data-label="Status">
+                  <span class="case-status" :style="{ '--status-color': order.statusColor }">{{ order.statusName || 'Order Received' }}</span>
+                </td>
+                <td data-label="Progress">
+                  <div class="case-progress"><span :style="{ width: `${progressForOrder(order)}%` }"></span></div>
+                  <small class="case-progress__label">{{ progressForOrder(order) }}% by status</small>
                 </td>
                 <td data-label="Date">{{ formatDate(order.startDate || order.createdAt) }}</td>
                 <td data-label="Actions">
@@ -114,7 +152,7 @@ onMounted(async () => {
               </tr>
             </template>
             <tr v-if="!orders.length">
-              <td colspan="5" class="admin-empty">No user orders yet.</td>
+              <td colspan="7" class="admin-empty">No user orders yet.</td>
             </tr>
           </tbody>
         </table>

@@ -21,6 +21,7 @@ import PublicHeader from '../../components/PublicHeader.vue';
 import ShowReelSection from '../../components/ShowReelSection.vue';
 import StatsFooterSection from '../../components/StatsFooterSection.vue';
 import { useSiteSettings } from '../../composables/useSiteSettings';
+import { isServicesNavigationItem, routeServicesNavigation } from '../../utils/publicNavigation';
 
 // ── Static Site Content ─────────────────────────────
 import {
@@ -65,7 +66,13 @@ function scrollToTarget(target, behavior = 'smooth') {
  *   'route'       — Vue Router push to a named route path
  *   'placeholder' — shows a temporary "coming soon" toast notice
  */
-function handleNavigation(item) {
+async function handleNavigation(item) {
+  if (isServicesNavigationItem(item)) {
+    closeMenu();
+    await routeServicesNavigation(router);
+    return;
+  }
+
   if (item.type === 'section') {
     scrollToTarget(item.target);
     closeMenu();

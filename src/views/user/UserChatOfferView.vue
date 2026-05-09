@@ -38,6 +38,10 @@ async function loadOffer() {
   try {
     const response = await api.get('/api/user/chat-offer');
     state.value = response.data;
+    if (!response.data?.settings?.paymentEnabled) {
+      router.replace('/dashboard/chats');
+      return;
+    }
     error.value = '';
   } catch (err) {
     error.value = err.message;

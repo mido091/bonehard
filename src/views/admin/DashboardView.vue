@@ -71,14 +71,6 @@ const kpis = computed(() => [
     icon: 'orders',
   },
   {
-    label: 'Profit',
-    value: formatMoneyCompact(profit.value.total || 0),
-    sub: `${formatMoneyCompact(profit.value.month || 0)} this month`,
-    to: '/admin/payments',
-    tone: 'gold',
-    icon: 'profit',
-  },
-  {
     label: 'Open Tasks',
     value: summary.value.openTasks || 0,
     sub: `${summary.value.urgentTasks || 0} urgent`,
@@ -363,42 +355,6 @@ function statusPercent(value) {
         <div class="ops-legend">
           <span><i class="legend-cases"></i>Cases</span>
           <span><i class="legend-orders"></i>User orders</span>
-        </div>
-      </section>
-
-      <section class="ops-panel">
-        <div class="ops-panel__header">
-          <div>
-            <p class="admin-kicker">Profit Watch</p>
-            <h3>Tracked profit</h3>
-          </div>
-          <RouterLink class="ops-mini-link" to="/admin/payments">Payments</RouterLink>
-        </div>
-        <div class="ops-profit">
-          <div class="ops-profit__total">
-            <span>Total tracked</span>
-            <strong>{{ formatMoney(profit.total) }}</strong>
-            <small>{{ formatMoney(profit.month) }} this month</small>
-          </div>
-          <article class="ops-profit__row">
-            <span>Cases</span>
-            <div><i :style="{ width: percent(profit.cases, maxProfitPart) }"></i></div>
-            <strong>{{ formatMoneyCompact(profit.cases) }}</strong>
-          </article>
-          <article class="ops-profit__row">
-            <span>User orders</span>
-            <div><i :style="{ width: percent(profit.orders, maxProfitPart) }"></i></div>
-            <strong>{{ formatMoneyCompact(profit.orders) }}</strong>
-          </article>
-          <article class="ops-profit__row">
-            <span>Chat payments</span>
-            <div><i :style="{ width: percent(profit.chat, maxProfitPart) }"></i></div>
-            <strong>{{ formatMoneyCompact(profit.chat) }}</strong>
-          </article>
-          <div class="ops-profit__pending">
-            <span>Open / pending value</span>
-            <strong>{{ formatMoney(profit.openValue) }}</strong>
-          </div>
         </div>
       </section>
 

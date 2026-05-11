@@ -1,6 +1,5 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import CasesTopNav from '../../components/admin/CasesTopNav.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import { api } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
@@ -190,8 +189,6 @@ onMounted(loadTemplates);
 <template>
   <section class="admin-page-stack">
     <div class="admin-panel">
-      <CasesTopNav />
-
       <div class="admin-panel-header">
         <div>
           <p class="admin-kicker">Cases Workspace</p>

@@ -5,7 +5,15 @@ import { API_BASE_URL, api } from '../../services/api';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import WorkflowFields from '../../components/admin/WorkflowFields.vue';
+import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import {
+  CASE_ALLOWED_UPLOAD_EXTENSIONS,
+  CASE_UPLOAD_ACCEPT,
+  MAX_CASE_FILE_SIZE,
+  MAX_CASE_FILE_SIZE_MB,
+  UPLOAD_CATEGORIES,
+} from '../../constants/uploadOptions';
 
 // Auto-focus directive for rename inputs
 const vFocus = { mounted: (el) => el.focus() };
@@ -25,7 +33,7 @@ const selectedUploads = ref([]);
 const savingFileNameId = ref(null);
 const copiedFileId = ref(null);
 const renamingFileId = ref(null);
-const uploadInput = ref(null);
+const uploadInputs = reactive({});
 const saveProgress = ref(0);
 const saveProgressLabel = ref('');
 // Users whose role is 'user' — shown in the Client dropdown
@@ -44,9 +52,8 @@ const teamMemberOptions = computed(() =>
     value: u.id,
   }))
 );
-const allowedUploadTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']);
-const maxUploadSizeMb = 50;
-const maxUploadSize = maxUploadSizeMb * 1024 * 1024;
+const uploadCategories = UPLOAD_CATEGORIES;
+const maxUploadSizeMb = MAX_CASE_FILE_SIZE_MB;
 
 const form = reactive({
   name: '',
@@ -63,7 +70,14 @@ const form = reactive({
   implantSystemOther: '',
   servicesNeeded: [],
   servicesNeededOther: '',
+  referenceLinks: [],
 });
+
+function cleanReferenceLinks(links = []) {
+  return links
+    .map((link) => ({ label: String(link.label || '').trim(), url: String(link.url || '').trim() }))
+    .filter((link) => link.url);
+}
 
 /**
  * Build the final payload for create/update.
@@ -85,6 +99,7 @@ function normalizePayload() {
     implantSystemOther: form.implantSystem === 'Other' ? form.implantSystemOther || null : null,
     servicesNeeded: form.servicesNeeded || [],
     servicesNeededOther: (form.servicesNeeded || []).includes('Other') ? form.servicesNeededOther || null : null,
+    referenceLinks: cleanReferenceLinks(form.referenceLinks),
     // Send custom field values as a flat map: { fieldKey: value }
     customFieldValues: { ...customValues },
   };
@@ -106,6 +121,7 @@ function fillForm(item) {
     implantSystemOther: item.implantSystemOther || '',
     servicesNeeded: item.servicesNeeded || [],
     servicesNeededOther: item.servicesNeededOther || '',
+    referenceLinks: (item.links || item.referenceLinks || []).map((link) => ({ label: link.label || '', url: link.url || '' })),
   });
 
   // Pre-fill custom field values from the response
@@ -201,21 +217,30 @@ function getStem(name) {
   return ext ? String(name).slice(0, -ext.length) : String(name || '');
 }
 
-function addUploadFiles(event) {
+function existingFilesForCategory(category) {
+  return existingFiles.value.filter((file) => (file.uploadCategory || 'photos_documents') === category);
+}
+
+function selectedUploadsForCategory(category) {
+  return selectedUploads.value.filter((file) => file.category === category);
+}
+
+function addUploadFiles(event, category = 'photos_documents') {
   const files = Array.from(event.target.files || []);
   error.value = '';
 
   files.forEach((file) => {
-    if (!allowedUploadTypes.has(file.type) || file.size > maxUploadSize) {
-      error.value = `Only images and PDFs up to ${maxUploadSizeMb}MB are allowed.`;
+    const ext = getExt(file.name).toLowerCase();
+    if (!CASE_ALLOWED_UPLOAD_EXTENSIONS.has(ext) || file.size > MAX_CASE_FILE_SIZE) {
+      error.value = `Allowed files are PDF, Office docs, archives, images, STL/DCM/PLY/OBJ, and MP4 up to ${maxUploadSizeMb}MB per file.`;
       return;
     }
 
-    const ext = getExt(file.name);
     const stem = getStem(file.name);
     selectedUploads.value.push({
       id: `${file.name}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() || Math.random()}`,
       file,
+      category,
       name: stem,   // editable stem shown in the input
       ext,          // extension is fixed, appended on save
       size: file.size,
@@ -224,7 +249,7 @@ function addUploadFiles(event) {
     });
   });
 
-  if (uploadInput.value) uploadInput.value.value = '';
+  if (uploadInputs[category]) uploadInputs[category].value = '';
 }
 
 function removeUploadFile(uploadId) {
@@ -256,7 +281,10 @@ async function copyFileLink(fileId) {
 
 function buildCaseSaveFormData() {
   const formData = new FormData();
-  formData.append('payload', JSON.stringify(normalizePayload()));
+  formData.append('payload', JSON.stringify({
+    ...normalizePayload(),
+    fileCategories: selectedUploads.value.map((item) => item.category || 'photos_documents'),
+  }));
   selectedUploads.value.forEach((item) => formData.append('files', item.file, item.name || item.file.name));
   return formData;
 }
@@ -356,6 +384,7 @@ onUnmounted(() => {
           v-model:services-needed="form.servicesNeeded"
           v-model:services-needed-other="form.servicesNeededOther"
         />
+        <ReferenceLinksEditor v-model="form.referenceLinks" />
       </fieldset>
 
       <fieldset class="admin-form-section">
@@ -385,13 +414,13 @@ onUnmounted(() => {
         <legend>Case Files</legend>
         
         <!-- Existing Files List -->
-        <section v-if="existingFiles.length" class="case-upload-group">
+        <section v-for="category in uploadCategories" v-show="existingFilesForCategory(category.key).length" :key="`saved-${category.key}`" class="case-upload-group">
           <header class="case-upload-group__header">
-            <h4>Uploaded Files</h4>
-            <span class="file-count-badge">{{ existingFiles.length }} file{{ existingFiles.length === 1 ? '' : 's' }}</span>
+            <h4>Uploaded: {{ category.title }}</h4>
+            <span class="file-count-badge">{{ existingFilesForCategory(category.key).length }} file{{ existingFilesForCategory(category.key).length === 1 ? '' : 's' }}</span>
           </header>
           <div class="file-list">
-            <article v-for="file in existingFiles" :key="file.id" class="file-row">
+            <article v-for="file in existingFilesForCategory(category.key)" :key="file.id" class="file-row">
               <!-- Icon -->
               <div class="file-row__icon" :class="file.mimeType?.includes('pdf') ? 'is-pdf' : 'is-doc'">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -440,33 +469,35 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <label class="case-upload-dropzone admin-field--wide">
-          <input
-            ref="uploadInput"
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.jpg,.jpeg,.png,.webp,.gif,.pdf"
-            @change="addUploadFiles"
-          />
-          <div class="dropzone-content">
-            <div class="dropzone-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <div class="categorized-upload-grid">
+          <label v-for="category in uploadCategories" :key="category.key" class="case-upload-dropzone categorized-upload-card admin-field--wide">
+            <input
+              :ref="(el) => { if (el) uploadInputs[category.key] = el }"
+              type="file"
+              multiple
+              :accept="CASE_UPLOAD_ACCEPT"
+              @change="addUploadFiles($event, category.key)"
+            />
+            <div class="dropzone-content">
+              <div class="dropzone-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              </div>
+              <div class="dropzone-text">
+                <span class="case-upload-dropzone__title">{{ category.title }}</span>
+                <span class="case-upload-dropzone__hint">{{ category.hint }} Max {{ maxUploadSizeMb }}MB per file.</span>
+              </div>
             </div>
-            <div class="dropzone-text">
-              <span class="case-upload-dropzone__title">Click or drag files to upload</span>
-              <span class="case-upload-dropzone__hint">Images or PDFs. Max {{ maxUploadSizeMb }}MB per file.</span>
-            </div>
-          </div>
-        </label>
+          </label>
+        </div>
 
         <!-- New Uploads Preview -->
-        <section v-if="selectedUploads.length" class="case-upload-group">
+        <section v-for="category in uploadCategories" v-show="selectedUploadsForCategory(category.key).length" :key="`new-${category.key}`" class="case-upload-group">
           <header class="case-upload-group__header">
-            <h4>Ready to Upload</h4>
-            <span class="file-count-badge">{{ selectedUploads.length }} file{{ selectedUploads.length === 1 ? '' : 's' }}</span>
+            <h4>{{ category.title }}</h4>
+            <span class="file-count-badge">{{ selectedUploadsForCategory(category.key).length }} file{{ selectedUploadsForCategory(category.key).length === 1 ? '' : 's' }}</span>
           </header>
           <div class="file-list">
-            <article v-for="item in selectedUploads" :key="item.id" class="file-row is-new">
+            <article v-for="item in selectedUploadsForCategory(category.key)" :key="item.id" class="file-row is-new">
               <div class="file-row__icon" :class="item.previewUrl ? 'is-img' : 'is-doc'">
                 <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.name" />
                 <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -527,6 +558,64 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.categorized-upload-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.categorized-upload-card {
+  min-height: 9.5rem;
+  margin: 0;
+}
+
+.categorized-upload-card.admin-field--wide {
+  grid-column: auto;
+}
+
+.categorized-upload-card :deep(.dropzone-content),
+.categorized-upload-card .dropzone-content {
+  min-height: 12rem;
+  padding: 1.45rem 1rem;
+}
+
+.categorized-upload-card :deep(.dropzone-icon),
+.categorized-upload-card .dropzone-icon {
+  width: 3.4rem;
+  height: 3.4rem;
+}
+
+.categorized-upload-card :deep(.dropzone-icon svg),
+.categorized-upload-card .dropzone-icon svg {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.categorized-upload-card :deep(.case-upload-dropzone__title),
+.categorized-upload-card .case-upload-dropzone__title {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.categorized-upload-card :deep(.case-upload-dropzone__hint),
+.categorized-upload-card .case-upload-dropzone__hint {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .categorized-upload-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .categorized-upload-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── File list ─────────────────────────────────── */
 .file-list { display: flex; flex-direction: column; gap: 0.5rem; }
 

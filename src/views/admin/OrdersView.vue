@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import CasesTopNav from '../../components/admin/CasesTopNav.vue';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import { api } from '../../services/api';
@@ -206,8 +205,6 @@ onBeforeUnmount(() => {
 <template>
   <section class="admin-page-stack">
     <div class="admin-panel">
-      <CasesTopNav />
-
       <div class="admin-panel-header">
         <div>
           <p class="admin-kicker">Work Requests</p>

@@ -123,6 +123,9 @@ onMounted(loadOrders);
               <td data-label="Submitted Date">{{ formatDate(order.startDate || order.createdAt) }}</td>
               <td data-label="Target Date">{{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : '-' }}</td>
               <td data-label="Actions" class="admin-table-actions">
+                <RouterLink :to="`/dashboard/chats?orderId=${order.id}`" class="admin-link-button client-talk-row-button" title="Open Client Talk">
+                  Client Talk
+                </RouterLink>
                 <RouterLink :to="`/dashboard/orders/${order.id}/edit`" class="admin-link-button" title="Edit Order">
                   Edit
                 </RouterLink>
@@ -151,6 +154,17 @@ onMounted(loadOrders);
   gap: 1rem;
   align-items: end;
   margin-bottom: 1.25rem;
+}
+
+.admin-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.client-talk-row-button {
+  border-color: rgba(52, 211, 153, 0.24);
+  color: #34d399;
 }
 
 @media (max-width: 720px) {

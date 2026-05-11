@@ -34,13 +34,6 @@ const settings = reactive({
   faviconUrl: '/assets/logo/new_logo.webp',
 });
 
-const paymentSettings = reactive({
-  paymentEnabled: false,
-  planPrice: 0,
-  walletNumber: '',
-  instapayHandle: '',
-});
-
 const socialForm = reactive({
   id: null,
   label: '',
@@ -61,7 +54,6 @@ const recipients = ref([]);
 
 const sections = [
   { key: 'brand', label: 'Brand' },
-  { key: 'billing', label: 'Billing & Payments' },
   { key: 'social', label: 'Social Links' },
   { key: 'recipients', label: 'Connect Emails' },
 ];
@@ -127,12 +119,8 @@ function resetRecipientForm() {
 async function loadSettings() {
   loading.value = true;
   try {
-    const [response, paymentResponse] = await Promise.all([
-      api.get('/api/admin/site-settings'),
-      api.get('/api/admin/payment-settings'),
-    ]);
+    const response = await api.get('/api/admin/site-settings');
     copySettings(response.data);
-    Object.assign(paymentSettings, paymentResponse.data || {});
     socialLinks.value = response.data.socialLinks || [];
     recipients.value = response.data.recipients || [];
     error.value = '';
@@ -140,24 +128,6 @@ async function loadSettings() {
     error.value = err.message;
   } finally {
     loading.value = false;
-  }
-}
-
-async function savePaymentSettings() {
-  saving.value = true;
-  try {
-    const response = await api.patch('/api/admin/payment-settings', {
-      paymentEnabled: paymentSettings.paymentEnabled,
-      planPrice: Number(paymentSettings.planPrice || 0),
-      walletNumber: paymentSettings.walletNumber,
-      instapayHandle: paymentSettings.instapayHandle,
-    });
-    Object.assign(paymentSettings, response.data || {});
-    showToast('Payment settings saved', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  } finally {
-    saving.value = false;
   }
 }
 
@@ -367,39 +337,6 @@ onMounted(loadSettings);
             <div class="admin-form-actions">
               <button class="admin-primary-button" type="submit" :disabled="saving">{{ saving ? 'Saving...' : 'Save Brand' }}</button>
               <button class="admin-danger-button" type="button" @click="resetBrandToDefault" :disabled="saving">Reset Default</button>
-            </div>
-          </form>
-
-          <form v-else-if="activeSection === 'billing'" class="admin-form admin-form-section" @submit.prevent="savePaymentSettings">
-            <div class="billing-settings-hero">
-              <div>
-                <p class="admin-kicker">Team Chat Plan</p>
-                <h3>Billing & Payments</h3>
-                <span class="admin-muted">Control paid chat access and payment destination details.</span>
-              </div>
-              <label class="billing-toggle">
-                <input v-model="paymentSettings.paymentEnabled" type="checkbox" />
-                <span>{{ paymentSettings.paymentEnabled ? 'Paid Chat Enabled' : 'Paid Chat Disabled' }}</span>
-              </label>
-            </div>
-
-            <label class="admin-field">
-              <span>Chat Plan Price (EGP)</span>
-              <input v-model="paymentSettings.planPrice" type="number" min="0" step="1" placeholder="0" />
-            </label>
-            <label class="admin-field">
-              <span>Wallet Number</span>
-              <input v-model="paymentSettings.walletNumber" maxlength="80" placeholder="01xxxxxxxxx" />
-            </label>
-            <label class="admin-field admin-field--wide">
-              <span>Instapay Account / Number</span>
-              <input v-model="paymentSettings.instapayHandle" maxlength="120" placeholder="name@instapay or account number" />
-            </label>
-
-            <div class="admin-form-actions">
-              <button class="admin-primary-button" type="submit" :disabled="saving">
-                {{ saving ? 'Saving...' : 'Save Payment Settings' }}
-              </button>
             </div>
           </form>
 

@@ -120,16 +120,18 @@ onUnmounted(() => {
     </template>
 
     <div class="stats-footer__lower">
-      <div class="stats-footer__column stats-footer__column--address">
-        <h3 class="footer-heading">Address</h3>
-        <p class="footer-copy">{{ content.address.city }}</p>
-        <div class="map-frame">
-          <iframe
-            :title="content.address.mapTitle"
-            :src="content.address.mapEmbed"
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-          ></iframe>
+      <div class="stats-footer__column stats-footer__column--pages">
+        <h3 class="footer-heading">Pages</h3>
+        <div class="footer-links">
+          <button
+            v-for="page in content.pages"
+            :key="page.label"
+            class="footer-links__item"
+            type="button"
+            @click="emit('navigate', page)"
+          >
+            {{ page.label }}
+          </button>
         </div>
       </div>
 
@@ -222,18 +224,16 @@ onUnmounted(() => {
 
       </div>
 
-      <div class="stats-footer__column stats-footer__column--pages">
-        <h3 class="footer-heading">Pages</h3>
-        <div class="footer-links">
-          <button
-            v-for="page in content.pages"
-            :key="page.label"
-            class="footer-links__item"
-            type="button"
-            @click="emit('navigate', page)"
-          >
-            {{ page.label }}
-          </button>
+      <div class="stats-footer__column stats-footer__column--address">
+        <h3 class="footer-heading">Address</h3>
+        <p class="footer-copy">{{ content.address.city }}</p>
+        <div class="map-frame">
+          <iframe
+            :title="content.address.mapTitle"
+            :src="content.address.mapEmbed"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
         </div>
       </div>
     </div>

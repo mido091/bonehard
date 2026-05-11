@@ -15,6 +15,8 @@ const error = ref('');
 const actionLoading = ref('');
 const statuses = ref([]);
 const filters = ref({ statusIds: [] });
+const statusMenuId = ref(null);
+const statusUpdatingId = ref(null);
 
 const totalPages = computed(() => Math.max(Math.ceil((meta.value.total || 0) / (meta.value.perPage || 20)), 1));
 
@@ -69,6 +71,29 @@ async function deleteOrder(order) {
     error.value = err.message;
   } finally {
     actionLoading.value = '';
+  }
+}
+
+function toggleStatusMenu(id) {
+  statusMenuId.value = statusMenuId.value === id ? null : id;
+}
+
+async function changeOrderStatus(order, status) {
+  if (Number(order.statusId) === Number(status.id) || statusUpdatingId.value) {
+    statusMenuId.value = null;
+    return;
+  }
+  statusUpdatingId.value = order.id;
+  error.value = '';
+  try {
+    const response = await api.patch(`/api/admin/user-orders/${order.id}/status`, { statusId: status.id });
+    const updated = response.data;
+    orders.value = orders.value.map((item) => item.id === order.id ? { ...item, ...updated } : item);
+    statusMenuId.value = null;
+  } catch (err) {
+    error.value = err.message || 'Failed to update order status.';
+  } finally {
+    statusUpdatingId.value = null;
   }
 }
 
@@ -134,7 +159,24 @@ onMounted(async () => {
                   <div class="admin-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">{{ order.contactEmail || '-' }}</div>
                 </td>
                 <td data-label="Status">
-                  <span class="case-status" :style="{ '--status-color': order.statusColor }">{{ order.statusName || 'Order Received' }}</span>
+                  <div class="inline-status-control">
+                    <button class="case-status case-status--button" type="button" :style="{ '--status-color': order.statusColor }" @click="toggleStatusMenu(order.id)">
+                      {{ statusUpdatingId === order.id ? 'Saving...' : order.statusName || 'Order Received' }}
+                    </button>
+                    <div v-if="statusMenuId === order.id" class="inline-status-menu">
+                      <button
+                        v-for="status in statuses"
+                        :key="status.id"
+                        class="inline-status-menu__item"
+                        :class="{ 'inline-status-menu__item--active': Number(status.id) === Number(order.statusId) }"
+                        type="button"
+                        @click="changeOrderStatus(order, status)"
+                      >
+                        <span class="inline-status-menu__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
+                        <span>{{ status.name }}</span>
+                      </button>
+                    </div>
+                  </div>
                 </td>
                 <td data-label="Progress">
                   <div class="case-progress"><span :style="{ width: `${progressForOrder(order)}%` }"></span></div>
@@ -209,6 +251,99 @@ onMounted(async () => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.inline-status-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.inline-status-control:has(.inline-status-menu) {
+  z-index: 700;
+}
+
+:deep(.case-status--button) {
+  cursor: pointer;
+  border-color: color-mix(in srgb, var(--status-color, #60a5fa) 48%, transparent);
+}
+
+.inline-status-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 1800;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(19rem, 52vh);
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.12);
+  border-radius: 0.85rem;
+  background: #070707;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.64), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.inline-status-menu__item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+  border: 0;
+  border-radius: 0.62rem;
+  background: transparent;
+  color: var(--color-text-strong);
+  cursor: pointer;
+  padding: 0.68rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  font-weight: 850;
+}
+
+.inline-status-menu__item:hover,
+.inline-status-menu__item--active {
+  background: rgba(var(--rgb-foreground), 0.08);
+}
+
+.inline-status-menu__dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--status-color, #60a5fa);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-color, #60a5fa) 18%, transparent);
+}
+
+.admin-table-wrap:has(.inline-status-menu) {
+  overflow: visible;
+}
+
+.admin-table tbody tr:has(.inline-status-menu) {
+  position: relative;
+  z-index: 220;
+}
+
+:global(body.light-mode) .inline-status-menu,
+:global(.light-mode) .inline-status-menu,
+:global([data-theme="light"]) .inline-status-menu {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18);
+}
+
+:global(body.light-mode) .inline-status-menu__item,
+:global(.light-mode) .inline-status-menu__item,
+:global([data-theme="light"]) .inline-status-menu__item {
+  color: #172033;
+}
+
+:global(body.light-mode) .inline-status-menu__item:hover,
+:global(body.light-mode) .inline-status-menu__item--active,
+:global(.light-mode) .inline-status-menu__item:hover,
+:global(.light-mode) .inline-status-menu__item--active,
+:global([data-theme="light"]) .inline-status-menu__item:hover,
+:global([data-theme="light"]) .inline-status-menu__item--active {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 @media (max-width: 640px) {

@@ -1,11 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../services/api';
 import { getPusherClient, disconnectPusherClient } from '../../services/pusherClient';
 import { authState } from '../../stores/authStore';
 
 const router = useRouter();
+const route = useRoute();
 
 // ── State ─────────────────────────────────────────────────────────────────
 const conversations = ref([]);
@@ -38,6 +39,7 @@ const deleting = ref(false);
 
 let activeChannel = null;
 let pusher = null;
+let pendingClientTalkContext = null;
 
 // ── Computed ──────────────────────────────────────────────────────────────
 const filteredConversations = computed(() => {
@@ -159,6 +161,24 @@ async function sendMessage() {
   }
 }
 
+async function sendClientTalkContext(conversation) {
+  if (!isUserChat.value || !conversation || !pendingClientTalkContext) return;
+  const storageKey = `client-talk-context:${pendingClientTalkContext.key}:${conversation.id}`;
+  if (localStorage.getItem(storageKey)) return;
+
+  const body = pendingClientTalkContext.body;
+  localStorage.setItem(storageKey, 'sent');
+  try {
+    const response = await api.post(`/api/chats/${conversation.id}/messages`, { body });
+    if (!messages.value.some(m => m.id === response.data.id)) {
+      messages.value = [...messages.value, response.data];
+      scrollToBottom();
+    }
+  } catch {
+    localStorage.removeItem(storageKey);
+  }
+}
+
 function handleKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
@@ -245,7 +265,10 @@ async function createChat() {
     showNewChat.value = false;
     await loadConversations();
     const created = conversations.value.find(c => c.id === response.data.id);
-    if (created) await openConversation(created);
+    if (created) {
+      await openConversation(created);
+      await sendClientTalkContext(created);
+    }
   } finally {
     creating.value = false;
   }
@@ -254,11 +277,50 @@ async function createChat() {
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(async () => {
   try {
+    if (isUserChat.value && (route.query.orderId || route.query.draftOrder)) {
+      if (route.query.orderId) {
+        try {
+          const orderResponse = await api.get(`/api/user/orders/${route.query.orderId}`);
+          const order = orderResponse.data || {};
+          pendingClientTalkContext = {
+            key: `order-${route.query.orderId}`,
+            body: [
+              'Client Talk Context',
+              `Client: ${authState.user?.name || 'User'}`,
+              `Order: ${order.name || `#${route.query.orderId}`}`,
+              `Order link: ${window.location.origin}/dashboard/orders/${route.query.orderId}`,
+            ].join('\n'),
+          };
+        } catch {
+          pendingClientTalkContext = {
+            key: `order-${route.query.orderId}`,
+            body: [
+              'Client Talk Context',
+              `Client: ${authState.user?.name || 'User'}`,
+              `Order link: ${window.location.origin}/dashboard/orders/${route.query.orderId}`,
+            ].join('\n'),
+          };
+        }
+      } else {
+        pendingClientTalkContext = {
+          key: 'draft-order',
+          body: [
+            'Client Talk Context',
+            `Client: ${authState.user?.name || 'User'}`,
+            'This client started the conversation before creating an order.',
+          ].join('\n'),
+        };
+      }
+    }
+
     await loadConversations();
-    if (conversations.value[0]) await openConversation(conversations.value[0]);
+    if (conversations.value[0]) {
+      await openConversation(conversations.value[0]);
+      await sendClientTalkContext(conversations.value[0]);
+    }
   } catch (err) {
     if (authState.user?.role === 'user' && err.status === 403) {
-      router.replace('/dashboard/chats/offer');
+      router.replace({ path: '/dashboard/chats/offer', query: route.query });
       return;
     }
     error.value = err.message;

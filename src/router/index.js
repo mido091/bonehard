@@ -63,6 +63,7 @@ const UserDashboardView = () => import('../views/user/UserDashboardView.vue');
 const UserOrdersView   = () => import('../views/user/UserOrdersView.vue');
 const UserOrderFormView = () => import('../views/user/UserOrderFormView.vue');
 const UserOrderDetailView = () => import('../views/user/UserOrderDetailView.vue');
+const UserOrderLibraryView = () => import('../views/user/UserOrderLibraryView.vue');
 const UserChatOfferView = () => import('../views/user/UserChatOfferView.vue');
 
 
@@ -142,6 +143,24 @@ const router = createRouter({
           },
         },
         {
+          path: 'orders/files',
+          name: 'user-order-files',
+          component: UserOrderLibraryView,
+          meta: {
+            title: 'Order Files | BoneHard',
+            description: 'View files attached to your BoneHard orders.',
+          },
+        },
+        {
+          path: 'orders/notes',
+          name: 'user-order-notes',
+          component: UserOrderLibraryView,
+          meta: {
+            title: 'Order Notes | BoneHard',
+            description: 'View notes attached to your BoneHard orders.',
+          },
+        },
+        {
           path: 'orders/new',
           name: 'user-order-new',
           component: UserOrderFormView,
@@ -205,6 +224,8 @@ const router = createRouter({
         { path: 'cases/generators', name: 'cases-generators', component: CasesWorkspaceView, meta: { workspace: 'generators' } },
         { path: 'cases/calendar', name: 'cases-calendar-global', component: CasesWorkspaceView, meta: { workspace: 'calendar' } },
         { path: 'cases/orders', name: 'case-orders', component: OrdersView },
+        { path: 'cases/files', name: 'cases-files-global', component: CasesWorkspaceView, meta: { workspace: 'files' } },
+        { path: 'cases/notes', name: 'cases-notes-global', component: CasesWorkspaceView, meta: { workspace: 'notes' } },
         { path: 'cases/timers', name: 'cases-timers-global', component: CasesWorkspaceView, meta: { workspace: 'timers' } },
         { path: 'cases/archive', name: 'cases-archive', component: CasesWorkspaceView, meta: { workspace: 'archive' } },
         { path: 'cases/notes-export', name: 'cases-notes-export-global', component: CasesWorkspaceView, meta: { workspace: 'notesExport' } },

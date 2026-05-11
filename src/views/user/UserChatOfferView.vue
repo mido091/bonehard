@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '../../composables/useToast';
 import { api } from '../../services/api';
 
 const router = useRouter();
+const route = useRoute();
 const { showToast } = useToast();
 
 const loading = ref(true);
@@ -39,7 +40,7 @@ async function loadOffer() {
     const response = await api.get('/api/user/chat-offer');
     state.value = response.data;
     if (!response.data?.settings?.paymentEnabled) {
-      router.replace('/dashboard/chats');
+      router.replace({ path: '/dashboard/chats', query: route.query });
       return;
     }
     error.value = '';
@@ -52,7 +53,7 @@ async function loadOffer() {
 
 function startNow() {
   if (canStartChat.value) {
-    router.push('/dashboard/chats');
+    router.push({ path: '/dashboard/chats', query: route.query });
     return;
   }
   modalOpen.value = true;

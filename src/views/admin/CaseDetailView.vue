@@ -5,6 +5,8 @@ import { API_BASE_URL, api } from '../../services/api';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import ConfirmDialog from '../../components/admin/ConfirmDialog.vue';
 import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
+import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
+import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 
@@ -87,6 +89,7 @@ async function deleteCaseFile(fileId) {
 // Team Notes
 const teamNotes = ref([]);
 const noteDraft = ref('');
+const noteLinks = ref([]);
 const savingNote = ref(false);
 
 const computedProgress = computed(() => {
@@ -151,6 +154,12 @@ function formatFileSize(size) {
   if (!numericSize) return 'Unknown size';
   if (numericSize < 1024 * 1024) return `${Math.max(1, Math.round(numericSize / 1024))} KB`;
   return `${(numericSize / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function cleanReferenceLinks(links = []) {
+  return links
+    .map((link) => ({ label: String(link.label || '').trim(), url: String(link.url || '').trim() }))
+    .filter((link) => link.url);
 }
 
 function fileDownloadUrl(fileId) {
@@ -270,8 +279,10 @@ async function saveTeamNote() {
     await api.post(`/api/cases/${route.params.id}/general-notes`, {
       title: 'Team Notes',
       content,
+      referenceLinks: cleanReferenceLinks(noteLinks.value),
     });
     noteDraft.value = '';
+    noteLinks.value = [];
     const res = await api.get(`/api/cases/${route.params.id}/general-notes?perPage=50`);
     teamNotes.value = res.data || [];
   } catch (err) {
@@ -409,6 +420,11 @@ onMounted(async () => {
             />
           </section>
 
+          <section v-if="item.links?.length" class="info-section glass-panel">
+            <h3 class="section-title">Reference Links</h3>
+            <ReferenceLinksList :links="item.links" />
+          </section>
+
           <section v-if="item.description" class="info-section glass-panel">
             <h3 class="section-title">Internal Notes</h3>
             <div class="rich-text-container" v-html="item.description"></div>
@@ -439,6 +455,7 @@ onMounted(async () => {
                   <span class="note-meta">{{ note.createdByEmail || '-' }} • {{ note.createdByRole || '-' }} • {{ formatDateTime(note.createdAt) }}</span>
                 </header>
                 <div class="rich-text-container note-content" v-html="note.content"></div>
+                <ReferenceLinksList :links="note.links || []" />
               </article>
               <p v-if="!teamNotes.length" class="empty-state" style="margin-bottom: 1.5rem;">No team notes yet.</p>
             </div>
@@ -447,6 +464,7 @@ onMounted(async () => {
               <label class="admin-field admin-field--wide">
                 <span style="color: var(--color-text-strong); font-weight: 600; margin-bottom: 0.5rem; display: block;">Add New Note</span>
                 <RichTextEditor v-model="noteDraft" />
+                <ReferenceLinksEditor v-model="noteLinks" />
               </label>
               <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
                 <button type="submit" class="premium-btn-primary" :disabled="savingNote || !noteDraft.trim()">
@@ -692,6 +710,7 @@ onMounted(async () => {
 .case-status-control[aria-expanded="true"] {
   border-color: rgba(var(--rgb-accent), 0.42);
   background: rgba(var(--rgb-accent), 0.08);
+  z-index: 900;
 }
 
 .case-status-control:disabled {
@@ -721,15 +740,15 @@ onMounted(async () => {
   top: calc(100% + 0.35rem);
   left: 0;
   width: 100%;
-  z-index: 100;
-  max-height: min(23rem, 58vh);
+  z-index: 1900;
+  max-height: min(19rem, 52vh);
   overflow: auto;
   border: 1px solid rgba(var(--rgb-foreground), 0.12);
   border-radius: 0.9rem;
-  background: rgba(var(--rgb-background), 0.96);
+  background: #070707;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(var(--rgb-foreground), 0.06);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.64), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   padding: 0.5rem;
 }
 
@@ -772,6 +791,30 @@ onMounted(async () => {
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+:global(body.light-mode) .case-status-control__menu,
+:global(.light-mode) .case-status-control__menu,
+:global([data-theme="light"]) .case-status-control__menu {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18);
+}
+
+:global(body.light-mode) .case-status-control__item,
+:global(.light-mode) .case-status-control__item,
+:global([data-theme="light"]) .case-status-control__item {
+  color: #172033;
+}
+
+:global(body.light-mode) .case-status-control__item:hover,
+:global(body.light-mode) .case-status-control__item--active,
+:global(.light-mode) .case-status-control__item:hover,
+:global(.light-mode) .case-status-control__item--active,
+:global([data-theme="light"]) .case-status-control__item:hover,
+:global([data-theme="light"]) .case-status-control__item--active {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .progress-track {

@@ -803,9 +803,14 @@ iframe:focus-visible {
   gap: 2rem;
 }
 
-.stats-footer__column--pages {
+.stats-footer__column--address {
   justify-self: end;
   text-align: right;
+}
+
+.stats-footer__column--pages {
+  justify-self: start;
+  text-align: left;
 }
 
 .footer-heading {
@@ -824,6 +829,7 @@ iframe:focus-visible {
 
 .map-frame {
   width: 14.2rem;
+  margin-left: auto;
   overflow: hidden;
   border-radius: 0.6rem;
   background: var(--color-bg);
@@ -880,7 +886,7 @@ iframe:focus-visible {
 
 .footer-links__item {
   width: fit-content;
-  justify-self: end;
+  justify-self: start;
   font-size: 1rem;
   font-weight: 500;
   color: var(--color-text);

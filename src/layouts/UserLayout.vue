@@ -11,16 +11,18 @@ const sidebarOpen = ref(false);
 const { hero, loadSiteSettings } = useSiteSettings();
 
 const pageTitle = computed(() => {
+  if (route.path === '/dashboard/orders/files') return 'Files';
+  if (route.path === '/dashboard/orders/notes') return 'Notes';
   if (route.path.includes('/orders/new')) return 'Add Order';
   if (route.path.includes('/orders/')) return 'Order Details';
   if (route.path.includes('/orders')) return 'Orders';
-  if (route.path.includes('/chats')) return 'Chats';
   return 'Dashboard';
 });
 
 const isDashboardActive = computed(() => route.path === '/dashboard');
 const isOrdersActive = computed(() => route.path.startsWith('/dashboard/orders'));
-const isChatsActive = computed(() => route.path.startsWith('/dashboard/chats'));
+const isFilesActive = computed(() => route.path === '/dashboard/orders/files');
+const isNotesActive = computed(() => route.path === '/dashboard/orders/notes');
 
 function closeSidebar() {
   sidebarOpen.value = false;
@@ -70,7 +72,7 @@ onMounted(loadSiteSettings);
           <RouterLink
             to="/dashboard/orders"
             class="admin-nav__link"
-            :class="{ 'admin-nav__link--active': isOrdersActive }"
+            :class="{ 'admin-nav__link--active': isOrdersActive && !isFilesActive && !isNotesActive }"
             active-class="admin-nav__link--inactive"
             @click="closeSidebar"
           >
@@ -84,19 +86,34 @@ onMounted(loadSiteSettings);
           </RouterLink>
 
           <RouterLink
-            to="/dashboard/chats/offer"
+            to="/dashboard/orders/files"
             class="admin-nav__link"
-            :class="{ 'admin-nav__link--active': isChatsActive }"
+            :class="{ 'admin-nav__link--active': isFilesActive }"
             active-class="admin-nav__link--inactive"
             @click="closeSidebar"
           >
             <svg class="admin-nav__icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5h16v10H8l-4 4V5Z" />
-              <path d="M8 9h8" />
-              <path d="M8 12h5" />
+              <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-10Z" />
+              <path d="M8 12h8" />
+              <path d="M8 15h5" />
             </svg>
-            <span class="admin-nav__link-text">Chats</span>
-            <span class="admin-nav__badge user-nav-new">New</span>
+            <span class="admin-nav__link-text">Files</span>
+          </RouterLink>
+
+          <RouterLink
+            to="/dashboard/orders/notes"
+            class="admin-nav__link"
+            :class="{ 'admin-nav__link--active': isNotesActive }"
+            active-class="admin-nav__link--inactive"
+            @click="closeSidebar"
+          >
+            <svg class="admin-nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h9l3 3v15H6V3Z" />
+              <path d="M14 3v4h4" />
+              <path d="M9 12h6" />
+              <path d="M9 16h4" />
+            </svg>
+            <span class="admin-nav__link-text">Notes</span>
           </RouterLink>
         </div>
       </nav>
@@ -160,36 +177,3 @@ onMounted(loadSiteSettings);
     </div>
   </div>
 </template>
-
-<style scoped>
-.user-nav-new {
-  margin-left: auto;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.1);
-  letter-spacing: 0;
-  min-width: 2.35rem;
-}
-
-@media (min-width: 1025px) {
-  .admin-sidebar:not(:hover):not(:focus-within) .user-nav-new {
-    width: 0.86rem;
-    min-width: 0.86rem;
-    height: 0.86rem;
-    padding: 0;
-    overflow: hidden;
-    color: transparent;
-    font-size: 0;
-    border-radius: 999px;
-  }
-
-  .admin-sidebar:hover .user-nav-new,
-  .admin-sidebar:focus-within .user-nav-new {
-    width: auto;
-    min-width: 2.35rem;
-    height: 1.35rem;
-    color: #34d399;
-    font-size: 0.68rem;
-  }
-}
-</style>

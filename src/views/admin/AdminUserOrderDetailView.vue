@@ -5,6 +5,8 @@ import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import ConfirmDialog from '../../components/admin/ConfirmDialog.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
+import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
+import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
@@ -16,6 +18,7 @@ const order = ref(null);
 const notes = ref([]);
 const statuses = ref([]);
 const noteDraft = ref('');
+const noteLinks = ref([]);
 const noteIsPrivate = ref(false);
 const loading = ref(false);
 const savingNote = ref(false);
@@ -29,6 +32,7 @@ const renamingFileId = ref(null);
 // Note editing state
 const editingNoteId = ref(null);
 const editingNoteDraft = ref('');
+const editingNoteLinks = ref([]);
 const editingNoteIsPrivate = ref(false);
 const savingEditNoteId = ref(null);
 const deletingNoteId = ref(null);
@@ -66,6 +70,11 @@ function formatFileSize(size) {
   if (!size) return '0 KB';
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+function cleanReferenceLinks(links = []) {
+  return links
+    .map((link) => ({ label: String(link.label || '').trim(), url: String(link.url || '').trim() }))
+    .filter((link) => link.url);
 }
 function fileDownloadUrl(fileId) {
   return `${API_BASE_URL}/api/admin/user-orders/${route.params.id}/files/${fileId}/download`;
@@ -126,10 +135,10 @@ async function saveTeamNote() {
   savingNote.value = true; error.value = '';
   try {
     const res = await api.post(`/api/admin/user-orders/${route.params.id}/team-notes`, {
-      title: 'Team Note', content, isPrivate: noteIsPrivate.value,
+      title: 'Team Note', content, isPrivate: noteIsPrivate.value, referenceLinks: cleanReferenceLinks(noteLinks.value),
     });
     notes.value = res.data || [];
-    noteDraft.value = ''; noteIsPrivate.value = false;
+    noteDraft.value = ''; noteLinks.value = []; noteIsPrivate.value = false;
   } catch (err) { error.value = err.message; }
   finally { savingNote.value = false; }
 }
@@ -137,10 +146,11 @@ async function saveTeamNote() {
 function startEditNote(note) {
   editingNoteId.value = note.id;
   editingNoteDraft.value = note.content || '';
+  editingNoteLinks.value = (note.links || []).map((link) => ({ label: link.label || '', url: link.url || '' }));
   editingNoteIsPrivate.value = !!note.isPrivate;
 }
 function cancelEditNote() {
-  editingNoteId.value = null; editingNoteDraft.value = ''; editingNoteIsPrivate.value = false;
+  editingNoteId.value = null; editingNoteDraft.value = ''; editingNoteLinks.value = []; editingNoteIsPrivate.value = false;
 }
 async function saveEditNote(note) {
   const content = editingNoteDraft.value.trim();
@@ -149,7 +159,7 @@ async function saveEditNote(note) {
   try {
     const res = await api.patch(
       `/api/admin/user-orders/${route.params.id}/team-notes/${note.id}`,
-      { title: note.title || 'Team Note', content, isPrivate: editingNoteIsPrivate.value },
+      { title: note.title || 'Team Note', content, isPrivate: editingNoteIsPrivate.value, referenceLinks: cleanReferenceLinks(editingNoteLinks.value) },
     );
     notes.value = res.data || [];
     cancelEditNote();
@@ -348,6 +358,11 @@ onMounted(loadOrder);
             />
           </section>
 
+          <section v-if="order.links?.length" class="info-section glass-panel">
+            <h3 class="section-title">Reference Links</h3>
+            <ReferenceLinksList :links="order.links" />
+          </section>
+
           <section v-if="order.clientDescription" class="info-section glass-panel">
             <h3 class="section-title">Project Notes</h3>
             <div class="rich-text-container" v-html="order.clientDescription"></div>
@@ -372,6 +387,7 @@ onMounted(loadOrder);
                 <!-- Edit mode -->
                 <template v-if="editingNoteId === note.id">
                   <RichTextEditor v-model="editingNoteDraft" />
+                  <ReferenceLinksEditor v-model="editingNoteLinks" />
                   <div class="note-edit-footer">
                     <!-- Visibility toggle inside edit -->
                     <button
@@ -425,6 +441,7 @@ onMounted(loadOrder);
                     </div>
                   </header>
                   <div class="rich-text-container note-content" v-html="note.content"></div>
+                  <ReferenceLinksList :links="note.links || []" />
                 </template>
               </article>
               <p v-if="!notes.length" class="empty-state" style="margin-bottom:1.5rem">No team notes yet.</p>
@@ -448,6 +465,7 @@ onMounted(loadOrder);
                 </button>
               </div>
               <RichTextEditor v-model="noteDraft" />
+              <ReferenceLinksEditor v-model="noteLinks" />
               <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
                 <button type="submit" class="premium-btn-primary" :disabled="savingNote || !noteDraft.trim()">
                   {{ savingNote ? 'Saving...' : 'Save Note' }}

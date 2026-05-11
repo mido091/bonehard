@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { API_BASE_URL, api } from '../../services/api';
 import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
+import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const route = useRoute();
@@ -84,6 +85,7 @@ onMounted(loadOrder);
           <h2>{{ order?.name || 'Order' }}</h2>
         </div>
         <div class="admin-toolbar">
+          <RouterLink class="admin-link-button client-talk-button" :to="`/dashboard/chats?orderId=${route.params.id}`">Client Talk</RouterLink>
           <RouterLink class="admin-primary-button" :to="`/dashboard/orders/${route.params.id}/edit`">Edit Order</RouterLink>
           <RouterLink class="admin-link-button" to="/dashboard">Back to Orders</RouterLink>
         </div>
@@ -136,6 +138,11 @@ onMounted(loadOrder);
           />
         </section>
 
+        <section v-if="order.links?.length" class="admin-form-section">
+          <legend>Reference Links</legend>
+          <ReferenceLinksList :links="order.links" />
+        </section>
+
         <section class="admin-form-section">
           <legend>Project Notes</legend>
           <div v-if="order.clientDescription" class="user-order-rich-text" v-html="order.clientDescription"></div>
@@ -163,6 +170,7 @@ onMounted(loadOrder);
                 </div>
               </div>
               <div class="note-content" v-html="note.content"></div>
+              <ReferenceLinksList :links="note.links || []" />
             </article>
           </div>
         </section>

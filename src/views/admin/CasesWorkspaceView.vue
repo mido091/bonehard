@@ -158,11 +158,11 @@ const fileCategoryOptions = computed(() => [
   { value: '', label: 'All Categories' },
   { value: 'general', label: 'General Library' },
   ...UPLOAD_CATEGORIES.map((category) => ({ value: category.key, label: compactUploadCategoryLabel(category.key) })),
+  { value: 'other', label: 'Other' },
 ]);
 
 const uploadFileCategoryOptions = computed(() => [
   ...fileCategoryOptions.value.filter((item) => item.value),
-  { value: 'other', label: 'Other' },
 ]);
 
 const fileLibraryStats = computed(() => {
@@ -189,12 +189,16 @@ const fileLibraryStats = computed(() => {
 const groupedFileRows = computed(() => {
   const groups = new Map();
   rows.value.forEach((row) => {
-    const key = `${row.sourceType || 'general'}:${row.caseId || 'library'}:${row.caseName || 'General Library'}`;
+    const isGeneral = (row.sourceType || 'general') === 'general';
+    const groupName = isGeneral ? displayUploadCategory(row) : (row.caseName || 'General Library');
+    const key = isGeneral
+      ? `general:${row.uploadCategory || 'general'}:${row.uploadCategoryOtherLabel || groupName}`
+      : `${row.sourceType || 'case'}:${row.caseId || 'library'}:${groupName}`;
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        caseId: row.caseId,
-        caseName: row.caseName || 'General Library',
+        caseId: isGeneral ? null : row.caseId,
+        caseName: groupName,
         sourceType: row.sourceType || 'general',
         items: [],
       });

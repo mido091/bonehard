@@ -231,12 +231,16 @@ const noteLibraryStats = computed(() => {
 const groupedNoteRows = computed(() => {
   const groups = new Map();
   rows.value.forEach((row) => {
-    const key = `${row.sourceType || 'general'}:${row.caseId || 'library'}:${row.caseName || 'General Library'}`;
+    const isGeneral = (row.sourceType || 'general') === 'general';
+    const groupName = isGeneral ? (row.noteType || 'General') : (row.caseName || 'General Library');
+    const key = isGeneral
+      ? `general:${groupName}`
+      : `${row.sourceType || 'case'}:${row.caseId || 'library'}:${groupName}`;
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        caseId: row.caseId,
-        caseName: row.caseName || 'General Library',
+        caseId: isGeneral ? null : row.caseId,
+        caseName: groupName,
         sourceType: row.sourceType || 'general',
         items: [],
       });

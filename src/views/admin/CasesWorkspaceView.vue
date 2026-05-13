@@ -1871,6 +1871,11 @@ onMounted(loadRows);
   border-color: rgba(15, 23, 42, 0.1);
 }
 
+:global([data-theme="light"]) .modal.library-modal .library-modal__actions {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
 .modal__header {
   display: flex;
   align-items: center;

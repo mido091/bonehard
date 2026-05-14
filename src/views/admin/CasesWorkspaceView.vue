@@ -778,9 +778,36 @@ onMounted(loadRows);
                   <a class="files-action-icon" :href="fileDownloadUrl(row)" target="_blank" rel="noopener" title="Download file" download>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   </a>
-                  <button class="files-open" type="button" @click="copyFileLink(row)">{{ copiedFileId === libraryItemKey(row) ? 'Copied' : 'Copy' }}</button>
-                  <button v-if="row.canManage !== false" class="files-open" type="button" @click="startRenameFile(row)">Rename</button>
-                  <button v-if="row.canManage !== false" class="files-open files-open--danger" type="button" @click="deleteFile(row)">Delete</button>
+                  <!-- Copy link icon -->
+                  <button
+                    class="files-action-icon"
+                    type="button"
+                    :title="copiedFileId === libraryItemKey(row) ? 'Copied!' : 'Copy link'"
+                    @click="copyFileLink(row)"
+                  >
+                    <svg v-if="copiedFileId !== libraryItemKey(row)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:#22c55e"><path d="M20 6 9 17l-5-5"/></svg>
+                  </button>
+                  <!-- Rename icon -->
+                  <button
+                    v-if="row.canManage !== false"
+                    class="files-action-icon"
+                    type="button"
+                    title="Rename file"
+                    @click="startRenameFile(row)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <!-- Delete icon -->
+                  <button
+                    v-if="row.canManage !== false"
+                    class="files-action-icon files-action-icon--danger"
+                    type="button"
+                    title="Delete file"
+                    @click="deleteFile(row)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                  </button>
                 </span>
               </span>
             </article>
@@ -1499,6 +1526,18 @@ onMounted(loadRows);
   background: rgba(var(--rgb-accent), 0.12);
   border-color: rgba(var(--rgb-accent), 0.34);
   color: var(--color-text-strong);
+}
+
+/* Danger variant for the delete icon button */
+.files-action-icon--danger {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.15);
+}
+
+.files-action-icon--danger:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #f87171;
 }
 
 .files-open--danger {

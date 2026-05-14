@@ -93,12 +93,16 @@ export async function apiRequest(path, options = {}) {
     ...requestOptions,
   });
 
-  // Gracefully handle non-JSON or empty responses
-  const payload = await response.json().catch(() => ({
-    data: null,
-    meta: null,
-    message: 'Unexpected server response',
-  }));
+  // Gracefully handle non-JSON or empty responses, including Vercel 413 text pages.
+  const responseText = await response.text();
+  let payload = { data: null, meta: null, message: responseText || 'Unexpected server response' };
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload.message = responseText.slice(0, 300);
+    }
+  }
 
   if (!response.ok && response.status === 403 && UNSAFE_METHODS.has((options.method || 'GET').toUpperCase())) {
     csrfTokenPromise = null;
@@ -188,7 +192,12 @@ export const api = {
         };
 
         xhr.onload = () => {
-          const payload = JSON.parse(xhr.responseText || '{"data":null,"meta":null,"message":""}');
+          let payload = { data: null, meta: null, message: xhr.responseText || xhr.statusText || 'Request failed' };
+          try {
+            payload = JSON.parse(xhr.responseText || '{"data":null,"meta":null,"message":""}');
+          } catch {
+            payload.message = (xhr.responseText || xhr.statusText || 'Request failed').slice(0, 300);
+          }
           if (xhr.status < 200 || xhr.status >= 300) {
             reject(new ApiError(payload.message || 'Request failed', xhr.status, payload.meta));
             return;
@@ -205,6 +214,8 @@ export const api = {
   },
   /** PATCH request — for partial resource updates */
   patch: (path, body) => apiRequest(path, { method: 'PATCH', body: JSON.stringify(body || {}) }),
+  /** PUT request - for full resource updates */
+  put: (path, body) => apiRequest(path, { method: 'PUT', body: JSON.stringify(body || {}) }),
   /** DELETE request */
   delete: (path) => apiRequest(path, { method: 'DELETE' }),
   /** POST with raw FormData (for file uploads, no Content-Type header so browser sets boundary) */

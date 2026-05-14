@@ -9,6 +9,7 @@ import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vu
 import PhoneInput from '../../components/PhoneInput.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
+import { uploadFilesDirectly } from '../../services/directUploads';
 import { authState, loadCurrentUser } from '../../stores/authStore';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import {
@@ -274,16 +275,6 @@ async function copyFileLink(fileId) {
   }
 }
 
-function buildOrderSaveFormData() {
-  const formData = new FormData();
-  formData.append('payload', JSON.stringify({
-    ...normalizePayload(),
-    fileCategories: selectedUploads.value.map((item) => item.category || 'photos_documents'),
-  }));
-  selectedUploads.value.forEach((item) => formData.append('files', item.file, uploadFileName(item)));
-  return formData;
-}
-
 async function saveOrder() {
   loading.value = true;
   error.value = '';
@@ -296,13 +287,34 @@ async function saveOrder() {
     const endpoint = isEditing.value ? `/api/user/orders/${route.params.id}/with-files` : '/api/user/orders/with-files';
     const method = isEditing.value ? 'PUT' : 'POST';
 
-    await api.upload(endpoint, buildOrderSaveFormData(), {
-      method,
+    const folderKey = isEditing.value
+      ? String(route.params.id)
+      : `pending-order-${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random()}`;
+    const uploadedFiles = await uploadFilesDirectly({
+      uploads: selectedUploads.value,
+      signPath: '/api/user/orders/uploads/sign',
+      folderKey,
+      ownerId: isEditing.value ? route.params.id : null,
+      ownerKey: 'orderId',
+      fileNameFor: uploadFileName,
       onProgress: (progress) => {
-        saveProgress.value = Math.min(92, Math.max(18, Math.round(progress * 0.9)));
-        saveProgressLabel.value = isUploadingFiles ? `Uploading files... ${progress}%` : `Saving... ${progress}%`;
+        saveProgress.value = Math.min(86, Math.max(18, Math.round(progress * 0.68) + 18));
+        saveProgressLabel.value = `Uploading files... ${progress}%`;
       },
     });
+
+    updateSaveProgress(90, isEditing.value ? 'Updating order...' : 'Submitting order...');
+    const payload = {
+      ...normalizePayload(),
+      uploadedFiles,
+      fileCategories: uploadedFiles.map((file) => file.uploadCategory || 'photos_documents'),
+    };
+
+    if (method === 'PUT') {
+      await api.put(endpoint, payload);
+    } else {
+      await api.post(endpoint, payload);
+    }
 
     updateSaveProgress(100, isEditing.value ? 'Order updated successfully!' : 'Order submitted successfully!');
     await new Promise((resolve) => setTimeout(resolve, 300));

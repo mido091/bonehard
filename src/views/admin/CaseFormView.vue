@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { API_BASE_URL, api } from '../../services/api';
+import { uploadFilesDirectly } from '../../services/directUploads';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import WorkflowFields from '../../components/admin/WorkflowFields.vue';
@@ -288,16 +289,6 @@ async function copyFileLink(fileId) {
   }
 }
 
-function buildCaseSaveFormData() {
-  const formData = new FormData();
-  formData.append('payload', JSON.stringify({
-    ...normalizePayload(),
-    fileCategories: selectedUploads.value.map((item) => item.category || 'photos_documents'),
-  }));
-  selectedUploads.value.forEach((item) => formData.append('files', item.file, uploadFileName(item)));
-  return formData;
-}
-
 async function saveCase() {
   loading.value = true;
   error.value = '';
@@ -310,20 +301,33 @@ async function saveCase() {
       isUploadingFiles ? 'Uploading files to cloud storage...' : 'Saving case details...'
     );
 
-    await api.upload(
-      isEdit.value ? `/api/cases/${route.params.id}/with-files` : '/api/cases/with-files',
-      buildCaseSaveFormData(),
-      {
-        method: isEdit.value ? 'PATCH' : 'POST',
-        onProgress: (progress) => {
-          const label = isUploadingFiles
-            ? `Uploading files... ${progress}%`
-            : `Saving... ${progress}%`;
-          saveProgressLabel.value = label;
-          saveProgress.value = Math.min(92, Math.max(18, Math.round(progress * 0.9)));
-        },
-      }
-    );
+    const folderKey = isEdit.value
+      ? String(route.params.id)
+      : `pending-case-${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random()}`;
+    const uploadedFiles = await uploadFilesDirectly({
+      uploads: selectedUploads.value,
+      signPath: '/api/cases/uploads/sign',
+      folderKey,
+      ownerId: isEdit.value ? route.params.id : null,
+      ownerKey: 'caseId',
+      fileNameFor: uploadFileName,
+      onProgress: (progress) => {
+        saveProgressLabel.value = `Uploading files... ${progress}%`;
+        saveProgress.value = Math.min(86, Math.max(18, Math.round(progress * 0.68) + 18));
+      },
+    });
+
+    updateSaveProgress(90, 'Saving case details...');
+    const payload = {
+      ...normalizePayload(),
+      uploadedFiles,
+      fileCategories: uploadedFiles.map((file) => file.uploadCategory || 'photos_documents'),
+    };
+    if (isEdit.value) {
+      await api.patch(`/api/cases/${route.params.id}/with-files`, payload);
+    } else {
+      await api.post('/api/cases/with-files', payload);
+    }
 
     updateSaveProgress(100, 'Case saved successfully!');
     await new Promise((resolve) => setTimeout(resolve, 300));

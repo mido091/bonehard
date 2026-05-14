@@ -520,7 +520,7 @@ onMounted(loadOrder);
           <section class="info-section glass-panel">
             <h3 class="section-title">Attached Files</h3>
             <div v-if="order.files?.length" class="file-list">
-              <article v-for="file in order.files" :key="file.id" class="file-row">
+              <article v-for="file in order.files" :key="file.id" class="file-row" :class="{ 'is-renaming': renamingFileId === file.id }">
                 <div class="file-row__icon" :class="{'is-pdf': file.mimeType?.includes('pdf')}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 </div>
@@ -556,8 +556,12 @@ onMounted(loadOrder);
                     <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
                   </div>
                 </div>
-                <div class="file-row__actions">
-                  <button type="button" class="file-action-btn" :class="{ 'is-active': renamingFileId === file.id }" title="Rename" @click="renamingFileId = renamingFileId === file.id ? null : file.id">
+                <!-- Actions: hidden during rename to prevent overlap -->
+                <div v-if="renamingFileId !== file.id" class="file-row__actions">
+                  <a class="file-action-btn" :href="fileDownloadUrl(file.id)" target="_blank" title="Download file" download>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                  <button type="button" class="file-action-btn" title="Rename" @click="renamingFileId = file.id">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   <button type="button" class="file-action-btn" :title="copiedFileId === file.id ? 'Copied!' : 'Copy link'" @click="copyFileLink(file.id)">
@@ -714,11 +718,11 @@ onMounted(loadOrder);
 .file-row__icon.is-pdf { background: rgba(248,113,113,0.15); color: #f87171; }
 .file-row__icon svg { width: 18px; height: 18px; }
 .file-row__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
-.file-row__name-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex-wrap: wrap; }
+.file-row__name-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 0; width: 100%; flex-wrap: wrap; }
 .file-name-text { font-weight: 700; font-size: 0.95rem; color: var(--color-text-strong); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .file-name-text:hover { text-decoration: underline; }
 .file-ext-dim { font-style: normal; font-weight: 400; color: rgba(var(--rgb-foreground),0.4); font-size: 0.82rem; }
-.file-rename-input { flex: 1; min-width: 120px; padding: 0.4rem 0.6rem; border: 1px solid rgba(var(--rgb-accent), 0.5); border-radius: 8px; background: rgba(var(--rgb-background), 0.4); color: var(--color-text-strong); font: inherit; font-weight: 700; font-size: 0.9rem; }
+.file-rename-input { flex: 1; width: 100%; min-width: 120px; padding: 0.4rem 0.6rem; border: 1px solid rgba(var(--rgb-accent), 0.5); border-radius: 8px; background: rgba(var(--rgb-background), 0.4); color: var(--color-text-strong); font: inherit; font-weight: 700; font-size: 0.9rem; }
 .file-rename-input:focus { outline: 2px solid rgba(var(--rgb-accent), 0.3); }
 .file-rename-save-btn { padding: 0.3rem 0.6rem; background: var(--color-accent, #a89bf9); color: #000; border: none; border-radius: 6px; font-size: 0.75rem; font-weight: 800; cursor: pointer; }
 .file-rename-save-btn:hover { opacity: 0.9; }
@@ -726,12 +730,16 @@ onMounted(loadOrder);
 .file-row__meta { display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: rgba(var(--rgb-foreground), 0.45); flex-wrap: wrap; }
 .meta-sep { opacity: 0.4; }
 .file-row__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 0.35rem; }
-.file-action-btn { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(var(--rgb-foreground), 0.1); border-radius: 7px; background: rgba(var(--rgb-foreground), 0.04); color: rgba(var(--rgb-foreground), 0.6); cursor: pointer; transition: all 0.15s; }
+.file-action-btn { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(var(--rgb-foreground), 0.1); border-radius: 7px; background: rgba(var(--rgb-foreground), 0.04); color: rgba(var(--rgb-foreground), 0.6); cursor: pointer; text-decoration: none; transition: all 0.15s; }
 .file-action-btn svg { width: 15px; height: 15px; }
 .file-action-btn:hover:not(:disabled) { background: rgba(var(--rgb-foreground),0.1); color: var(--color-text-strong); }
 .file-action-btn.is-active { background: rgba(var(--rgb-accent), 0.15); border-color: rgba(var(--rgb-accent), 0.4); color: rgba(var(--rgb-accent), 0.9); }
 .file-action-btn.is-danger:hover:not(:disabled) { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
 .file-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* During rename, actions are hidden via v-if — info takes full width */
+.file-row.is-renaming { align-items: center; }
+.file-row.is-renaming .file-row__info { flex: 1; min-width: 0; }
 
 .copied-feedback { position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: #34d399; color: #000; padding: 0.2rem 0.5rem; border-radius: 5px; font-size: 0.7rem; font-weight: 800; white-space: nowrap; animation: popFloatFade 1.5s ease-out forwards; pointer-events: none; }
 @keyframes popFloatFade {

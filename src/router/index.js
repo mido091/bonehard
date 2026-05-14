@@ -64,7 +64,7 @@ const UserOrdersView   = () => import('../views/user/UserOrdersView.vue');
 const UserOrderFormView = () => import('../views/user/UserOrderFormView.vue');
 const UserOrderDetailView = () => import('../views/user/UserOrderDetailView.vue');
 const UserOrderLibraryView = () => import('../views/user/UserOrderLibraryView.vue');
-const UserChatOfferView = () => import('../views/user/UserChatOfferView.vue');
+const ClientTalkArchiveView = () => import('../views/admin/ClientTalkArchiveView.vue');
 
 
 const router = createRouter({
@@ -187,24 +187,6 @@ const router = createRouter({
             description: 'Edit your BoneHard order.',
           },
         },
-        {
-          path: 'chats/offer',
-          name: 'user-chat-offer',
-          component: UserChatOfferView,
-          meta: {
-            title: 'Quick Free Consultations | BoneHard',
-            description: 'Start a free limited-time consultation with the BoneHard team.',
-          },
-        },
-        {
-          path: 'chats',
-          name: 'user-chats',
-          component: ChatsView,
-          meta: {
-            title: 'Chats | BoneHard',
-            description: 'Chat with the BoneHard team.',
-          },
-        },
       ],
     },
 
@@ -262,6 +244,7 @@ const router = createRouter({
         { path: 'messages', name: 'admin-messages', component: MessagesView },
         { path: 'payments', name: 'admin-payments', component: PaymentsView },
         { path: 'orders', name: 'admin-orders-manage', component: OrdersManageView },
+        { path: 'client-talk', name: 'admin-client-talk', component: ClientTalkArchiveView, meta: { adminOnly: true, title: 'Client Talk Archive | BoneHard' } },
       ],
 
     },

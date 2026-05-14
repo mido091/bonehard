@@ -4,6 +4,8 @@ import { api } from '../../services/api';
 import { getPusherClient } from '../../services/pusherClient';
 import { authState } from '../../stores/authStore';
 import { useRouter } from 'vue-router';
+import ClientTalkRequestModal from '../admin/ClientTalkRequestModal.vue';
+import ClientTalkModal from '../ClientTalkModal.vue';
 
 const notifications = ref([]);
 const unreadCount = ref(0);
@@ -17,7 +19,26 @@ const router = useRouter();
 let pusher = null;
 let channel = null;
 
+// State for admin/assistant Client Talk request modal
+const activeClientTalkReq = ref(null);
+const activeClientTalkSession = ref(null);
+
+// State for real-time premium pop-up toast notifications
+const activeToasts = ref([]);
+
+function handleToastClick(toast) {
+  dismissToast(toast);
+  markRead(toast);
+}
+
+function dismissToast(toast) {
+  activeToasts.value = activeToasts.value.filter((t) => t.toastKey !== toast.toastKey);
+}
+
 const currentUserId = computed(() => authState.user?.id || null);
+const activeTalkStorageKey = computed(() =>
+  currentUserId.value ? `bonehard:client-talk:active:${currentUserId.value}` : null
+);
 
 function normalizeNotification(item) {
   return {
@@ -36,7 +57,14 @@ function safeJson(value) {
 
 function formatRelativeDate(value) {
   if (!value) return '';
-  const date = new Date(value);
+  // MySQL returns datetimes without timezone suffix (e.g. "2026-05-13 19:01:15").
+  // Without 'Z', Date() treats the string as LOCAL time, adding an incorrect offset.
+  // We normalize to ISO UTC so the diff is always calculated correctly.
+  const normalized =
+    typeof value === 'string' && !value.endsWith('Z') && !value.includes('+')
+      ? value.replace(' ', 'T') + 'Z'
+      : value;
+  const date = new Date(normalized);
   const diffMs = Date.now() - date.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
 
@@ -53,6 +81,65 @@ function formatRelativeDate(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function rememberActiveClientTalk(session) {
+  if (!activeTalkStorageKey.value || !session?.id || session.status !== 'active') return;
+  if (Number(session.assignedTo) !== Number(currentUserId.value)) return;
+
+  localStorage.setItem(activeTalkStorageKey.value, JSON.stringify({
+    sessionId: session.id,
+    orderId: session.orderId,
+    orderName: session.orderName || '',
+    savedAt: Date.now(),
+  }));
+}
+
+function clearRememberedClientTalk(sessionId = null) {
+  if (!activeTalkStorageKey.value) return;
+
+  if (sessionId) {
+    const raw = localStorage.getItem(activeTalkStorageKey.value);
+    const saved = raw ? safeJson(raw) : null;
+    if (saved?.sessionId && Number(saved.sessionId) !== Number(sessionId)) return;
+  }
+
+  localStorage.removeItem(activeTalkStorageKey.value);
+}
+
+async function restoreActiveClientTalkShortcut() {
+  if (!activeTalkStorageKey.value || !['admin', 'assistant'].includes(authState.user?.role)) return;
+
+  const raw = localStorage.getItem(activeTalkStorageKey.value);
+  const saved = raw ? safeJson(raw) : null;
+  if (!saved?.sessionId) return;
+
+  try {
+    const response = await api.get(`/api/client-talk/sessions/${saved.sessionId}`);
+    const session = response.data;
+
+    if (
+      session?.status === 'active' &&
+      Number(session.assignedTo) === Number(currentUserId.value)
+    ) {
+      activeClientTalkSession.value = session;
+      return;
+    }
+
+    clearRememberedClientTalk(saved.sessionId);
+  } catch {
+    clearRememberedClientTalk(saved.sessionId);
+  }
+}
+
+function handleClientTalkAccepted(session) {
+  rememberActiveClientTalk(session);
+}
+
+function handleClientTalkEnded(session) {
+  clearRememberedClientTalk(session?.id);
+  activeClientTalkSession.value = null;
+  activeClientTalkReq.value = null;
 }
 
 async function loadNotifications() {
@@ -98,6 +185,25 @@ async function markRead(item) {
 
   // Handle navigation based on notification type
   const data = item.dataJson;
+
+  // Client Talk notification — open claim modal for admin/assistant
+  if (item.type === 'client_talk' && data?.sessionId) {
+    const role = authState.user?.role;
+    if (role === 'admin' || role === 'assistant') {
+      activeClientTalkReq.value = {
+        sessionId:   data.sessionId,
+        orderId:     data.orderId,
+        orderName:   data.orderName || '',
+        userName:    data.userName || 'Client',
+        requestedAt: item.createdAt,
+        sessionStatus: data.sessionStatus,
+        assignedTo:  data.assignedTo,
+      };
+      open.value = false;
+      return;
+    }
+  }
+
   if (data?.orderId) {
     const prefix = authState.user?.role === 'admin' || authState.user?.role === 'assistant' ? '/admin/user-orders' : '/dashboard/orders';
     router.push(`${prefix}/${data.orderId}`);
@@ -194,6 +300,27 @@ function handleRealtimeNotification(payload) {
   if (!incoming.readAt) {
     unreadCount.value += 1;
   }
+
+  // Display pop-up toast with premium animation for 5 seconds
+  const toastObj = { ...incoming, toastKey: Date.now() + '_' + Math.random() };
+  activeToasts.value = [...activeToasts.value, toastObj];
+
+  setTimeout(() => {
+    activeToasts.value = activeToasts.value.filter((t) => t.toastKey !== toastObj.toastKey);
+  }, 5000);
+}
+
+function handleRealtimeDeletion(payload) {
+  const targetId = Number(payload.id);
+  const existing = notifications.value.find((item) => Number(item.id) === targetId);
+  if (existing) {
+    notifications.value = notifications.value.filter((item) => Number(item.id) !== targetId);
+    if (!existing.readAt) {
+      unreadCount.value = Math.max(0, unreadCount.value - 1);
+    }
+  }
+  // Instantly dismiss any active pop-up toast for this deleted notification
+  activeToasts.value = activeToasts.value.filter((t) => Number(t.id) !== targetId);
 }
 
 async function setupRealtime() {
@@ -203,6 +330,7 @@ async function setupRealtime() {
     pusher = await getPusherClient();
     channel = pusher.subscribe(`private-user-${currentUserId.value}`);
     channel.bind('notification.created', handleRealtimeNotification);
+    channel.bind('notification.deleted', handleRealtimeDeletion);
   } catch (err) {
     console.warn('[Notifications] Realtime unavailable:', err.message);
   }
@@ -211,6 +339,7 @@ async function setupRealtime() {
 function teardownRealtime() {
   if (channel) {
     channel.unbind('notification.created', handleRealtimeNotification);
+    channel.unbind('notification.deleted', handleRealtimeDeletion);
     pusher?.unsubscribe(channel.name);
   }
   channel = null;
@@ -227,10 +356,13 @@ watch(currentUserId, async (userId) => {
   teardownRealtime();
   notifications.value = [];
   unreadCount.value = 0;
+  activeClientTalkReq.value = null;
+  activeClientTalkSession.value = null;
 
   if (userId) {
     await loadNotifications();
     await setupRealtime();
+    await restoreActiveClientTalkShortcut();
   }
 });
 
@@ -238,6 +370,7 @@ onMounted(async () => {
   document.addEventListener('click', handleDocumentClick);
   await loadNotifications();
   await setupRealtime();
+  await restoreActiveClientTalkShortcut();
 });
 
 onBeforeUnmount(() => {
@@ -248,6 +381,30 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="authState.user" ref="root" class="notification-bell">
+
+    <!-- Client Talk request modal — shown when admin/assistant clicks the notification -->
+    <ClientTalkRequestModal
+      v-if="activeClientTalkReq"
+      :session-id="activeClientTalkReq.sessionId"
+      :order-id="activeClientTalkReq.orderId"
+      :order-name="activeClientTalkReq.orderName"
+      :user-name="activeClientTalkReq.userName"
+      :requested-at="activeClientTalkReq.requestedAt"
+      @accepted="handleClientTalkAccepted"
+      @ended="handleClientTalkEnded"
+      @close="activeClientTalkReq = null"
+    />
+
+    <ClientTalkModal
+      v-if="activeClientTalkSession"
+      :order-id="activeClientTalkSession.orderId"
+      :order-name="activeClientTalkSession.orderName || ''"
+      :initial-session="activeClientTalkSession"
+      initial-minimized
+      @ended="handleClientTalkEnded"
+      @close="activeClientTalkSession = null"
+    />
+
     <button
       class="notification-bell__button"
       type="button"
@@ -333,6 +490,39 @@ onBeforeUnmount(() => {
         </TransitionGroup>
       </section>
     </transition>
+
+    <!-- Real-time Toast pop-up notifications container -->
+    <Teleport to="body">
+      <div class="notification-toasts" aria-live="polite">
+        <TransitionGroup name="toast-slide">
+          <div
+            v-for="toast in activeToasts"
+            :key="toast.toastKey"
+            class="notification-toast"
+            @click="handleToastClick(toast)"
+          >
+            <div class="notification-toast__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" />
+                <path d="M10 21h4" />
+              </svg>
+            </div>
+            <div class="notification-toast__content">
+              <p class="notification-toast__title">{{ toast.title || 'New Notification' }}</p>
+              <p v-if="toast.body" class="notification-toast__body">{{ toast.body }}</p>
+            </div>
+            <button
+              class="notification-toast__close"
+              type="button"
+              aria-label="Close"
+              @click.stop="dismissToast(toast)"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </TransitionGroup>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -707,5 +897,115 @@ onBeforeUnmount(() => {
   .notification-bell__header-actions {
     max-width: 9.5rem;
   }
+}
+
+/* Premium Real-time Toast Pop-ups */
+.notification-toasts {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  pointer-events: none;
+  max-width: 380px;
+  width: calc(100vw - 2rem);
+}
+
+.notification-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: rgba(18, 18, 18, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(248, 217, 170, 0.25);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.notification-toast:hover {
+  transform: translateY(-2px);
+  border-color: rgba(248, 217, 170, 0.5);
+}
+
+.notification-toast__icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(248, 217, 170, 0.12);
+  color: #f8d9aa;
+}
+
+.notification-toast__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.notification-toast__content {
+  flex-grow: 1;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.notification-toast__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #f8d9aa;
+}
+
+.notification-toast__body {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notification-toast__close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.notification-toast__close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Toast Slide Animations */
+.toast-slide-enter-active,
+.toast-slide-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-slide-enter-from {
+  opacity: 0;
+  transform: translateY(24px) scale(0.92);
+}
+
+.toast-slide-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.92);
 }
 </style>

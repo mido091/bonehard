@@ -775,7 +775,9 @@ onMounted(loadRows);
               <span class="files-file-card__meta">
                 <span class="files-chip" :class="`files-chip--${row.folderType || 'private'}`">{{ row.folderType || 'private' }}</span>
                 <span class="files-actions">
-                  <a class="files-open" :href="fileDownloadUrl(row)" target="_blank" rel="noopener">Open</a>
+                  <a class="files-action-icon" :href="fileDownloadUrl(row)" target="_blank" rel="noopener" title="Download file" download>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
                   <button class="files-open" type="button" @click="copyFileLink(row)">{{ copiedFileId === libraryItemKey(row) ? 'Copied' : 'Copy' }}</button>
                   <button v-if="row.canManage !== false" class="files-open" type="button" @click="startRenameFile(row)">Rename</button>
                   <button v-if="row.canManage !== false" class="files-open files-open--danger" type="button" @click="deleteFile(row)">Delete</button>
@@ -1474,6 +1476,31 @@ onMounted(loadRows);
   padding: 0;
 }
 
+.files-action-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  border-radius: 0.6rem;
+  background: rgba(var(--rgb-foreground), 0.04);
+  color: var(--color-accent, #f8d9aa);
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.files-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.files-action-icon:hover {
+  transform: translateY(-1px);
+  background: rgba(var(--rgb-accent), 0.12);
+  border-color: rgba(var(--rgb-accent), 0.34);
+  color: var(--color-text-strong);
+}
+
 .files-open--danger {
   color: #fca5a5;
 }
@@ -1756,6 +1783,18 @@ onMounted(loadRows);
 
 :global([data-theme="light"]) .files-open {
   color: #7c4a03;
+}
+
+:global([data-theme="light"]) .files-action-icon {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #7c4a03;
+}
+
+:global([data-theme="light"]) .files-action-icon:hover {
+  background: #fff7ed;
+  border-color: rgba(124, 74, 3, 0.28);
+  color: #0f172a;
 }
 
 :global([data-theme="light"]) .files-open--danger {

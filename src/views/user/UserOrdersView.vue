@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
+import ClientTalkModal from '../../components/ClientTalkModal.vue';
 
 const filters = reactive({
   search: '',
@@ -16,6 +17,8 @@ const orders = ref([]);
 const meta = ref({ total: 0, page: 1, perPage: 20 });
 const loading = ref(false);
 const error = ref('');
+// Order selected for Client Talk modal
+const selectedOrderForTalk = ref(null);
 
 const totalPages = computed(() => Math.max(Math.ceil((meta.value.total || 0) / (meta.value.perPage || 20)), 1));
 
@@ -65,7 +68,8 @@ onMounted(loadOrders);
 </script>
 
 <template>
-  <section class="admin-page-stack user-orders-page">
+  <div class="view-root">
+    <section class="admin-page-stack user-orders-page">
     <div class="admin-panel">
       <div class="admin-panel-header">
         <div>
@@ -123,9 +127,12 @@ onMounted(loadOrders);
               <td data-label="Submitted Date">{{ formatDate(order.startDate || order.createdAt) }}</td>
               <td data-label="Target Date">{{ order.targetTime ? new Date(order.targetTime).toLocaleDateString() : '-' }}</td>
               <td data-label="Actions" class="admin-table-actions">
-                <RouterLink :to="`/dashboard/chats?orderId=${order.id}`" class="admin-link-button client-talk-row-button" title="Open Client Talk">
-                  Client Talk
-                </RouterLink>
+                <button
+                  class="admin-link-button client-talk-row-button"
+                  type="button"
+                  title="Open Client Talk"
+                  @click="selectedOrderForTalk = order"
+                >Client Talk</button>
                 <RouterLink :to="`/dashboard/orders/${order.id}/edit`" class="admin-link-button" title="Edit Order">
                   Edit
                 </RouterLink>
@@ -144,10 +151,20 @@ onMounted(loadOrders);
         <button class="admin-link-button" type="button" :disabled="filters.page >= totalPages" @click="changePage(filters.page + 1)">Next</button>
       </div>
     </div>
-  </section>
+    </section>
+
+    <ClientTalkModal
+      v-if="selectedOrderForTalk"
+      :order-id="selectedOrderForTalk.id"
+      :order-name="selectedOrderForTalk.name || ''"
+      @close="selectedOrderForTalk = null"
+    />
+  </div>
 </template>
 
 <style scoped>
+.view-root { display: contents; }
+
 .user-orders-filter {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

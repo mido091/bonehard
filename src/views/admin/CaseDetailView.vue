@@ -480,7 +480,7 @@ onMounted(async () => {
           <section class="info-section glass-panel">
             <h3 class="section-title">Attached Files</h3>
             <div v-if="files.length" class="file-list">
-              <article v-for="file in files" :key="file.id" class="file-row">
+              <article v-for="file in files" :key="file.id" class="file-row" :class="{ 'is-renaming': renamingFileId === file.id }">
                 <!-- Icon -->
                 <div class="file-row__icon" :class="{'is-pdf': file.mimeType?.includes('pdf')}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -515,9 +515,12 @@ onMounted(async () => {
                     <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
                   </div>
                 </div>
-                <!-- Actions -->
-                <div class="file-row__actions">
-                  <button type="button" class="file-action-btn" :class="{ 'is-active': renamingFileId === file.id }" title="Rename" @click="renamingFileId = renamingFileId === file.id ? null : file.id">
+                <!-- Actions: hidden while renaming to avoid layout overlap -->
+                <div v-if="renamingFileId !== file.id" class="file-row__actions">
+                  <a class="file-action-btn" :href="fileDownloadUrl(file.id)" target="_blank" title="Download file" download>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                  <button type="button" class="file-action-btn" title="Rename" @click="renamingFileId = file.id">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                   <button type="button" class="file-action-btn" :title="copiedFileId === file.id ? 'Copied!' : 'Copy link'" @click="copyFileLink(file.id)">
@@ -1048,6 +1051,7 @@ onMounted(async () => {
   align-items: center; 
   gap: 0.5rem; 
   min-width: 0;
+  width: 100%;
   flex-wrap: wrap; /* Allow wrapping on small screens */
 }
 
@@ -1063,6 +1067,7 @@ onMounted(async () => {
 
 .file-rename-input {
   flex: 1;
+  width: 100%;
   min-width: 120px; /* Ensure a decent minimum width */
   padding: 0.4rem 0.6rem;
   border: 1px solid rgba(var(--rgb-accent), 0.5);
@@ -1112,6 +1117,7 @@ onMounted(async () => {
   background: rgba(var(--rgb-foreground), 0.04);
   color: rgba(var(--rgb-foreground), 0.6);
   cursor: pointer;
+  text-decoration: none;
   transition: all 0.15s;
 }
 .file-action-btn svg { width: 15px; height: 15px; }
@@ -1120,6 +1126,27 @@ onMounted(async () => {
   background: rgba(var(--rgb-accent), 0.15);
   border-color: rgba(var(--rgb-accent), 0.4);
   color: rgba(var(--rgb-accent), 0.9);
+}
+
+/* When renaming: actions are hidden via v-if, info section takes full width */
+.file-row.is-renaming {
+  align-items: center;
+}
+
+.file-row.is-renaming .file-row__info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Rename row: input + ext badge + save btn in one tidy flex line */
+.file-row.is-renaming .file-row__name-wrap {
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+
+.file-row.is-renaming .file-rename-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .copied-feedback {

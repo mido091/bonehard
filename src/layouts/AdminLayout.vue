@@ -24,6 +24,7 @@ const navIcons = {
   requests: ['M6 3h9l3 3v15H6V3Z', 'M14 3v4h4', 'M9 12h6', 'M9 16h6'],
   orders: ['M6 7h12l-1 14H7L6 7Z', 'M9 7a3 3 0 0 1 6 0'],
   chats: ['M4 5h16v10H8l-4 4V5Z', 'M8 9h8', 'M8 12h5'],
+  clientTalk: ['M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z'],
   messages: ['M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 4-8 5-8-5V6l8 5 8-5v2Z'],
   payments: ['M3 7h18v10H3V7Z', 'M7 11h4', 'M16 13h1', 'M6 17v2h12v-2'],
   files: ['M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-10Z', 'M8 12h8', 'M8 15h5'],
@@ -73,7 +74,8 @@ const navGroups = computed(() => [
     items: [
       { label: 'Chats', to: '/admin/chats', icon: 'chats' },
       { label: 'Messages', to: '/admin/messages', icon: 'messages' },
-    ],
+      canManageUsersAndSettings.value ? { label: 'Client Talk', to: '/admin/client-talk', icon: 'clientTalk', isActive: route.path.startsWith('/admin/client-talk') } : null,
+    ].filter(Boolean),
   },
   {
     title: 'Management',
@@ -94,6 +96,7 @@ const pageTitle = computed(() => {
   if (route.path.includes('/messages')) return 'Messages';
   if (route.path.includes('/payments')) return 'Payments';
   if (route.path.includes('/settings')) return 'Settings';
+  if (route.path.includes('/client-talk')) return 'Client Talk';
   return 'Dashboard';
 });
 

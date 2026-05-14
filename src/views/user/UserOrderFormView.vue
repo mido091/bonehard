@@ -9,6 +9,8 @@ import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vu
 import PhoneInput from '../../components/PhoneInput.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
+import { authState, loadCurrentUser } from '../../stores/authStore';
+import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import {
   CASE_ALLOWED_UPLOAD_EXTENSIONS,
   CASE_UPLOAD_ACCEPT,
@@ -26,6 +28,7 @@ const { showConfirm } = useConfirmDialog();
 const isEditing = computed(() => !!route.params.id);
 const loading = ref(false);
 const error = ref('');
+const showClientTalk = ref(false);
 const customFields = ref([]);
 const customValues = reactive({});
 const selectedUploads = ref([]);
@@ -80,6 +83,10 @@ function normalizePayload() {
 }
 
 async function loadSettings() {
+  if (!authState.ready) {
+    await loadCurrentUser();
+  }
+
   const response = await api.get('/api/user/orders/settings');
   customFields.value = response.data?.customFields || [];
   customFields.value.forEach((field) => {
@@ -113,6 +120,14 @@ async function loadSettings() {
     } catch (err) {
       error.value = 'Failed to load order details for editing.';
     }
+  } else {
+    const currentUser = authState.user || {};
+    if (!form.contactEmail && currentUser.email) {
+      form.contactEmail = currentUser.email;
+    }
+    if (!form.contactPhone && currentUser.phone) {
+      form.contactPhone = currentUser.phone;
+    }
   }
 }
 
@@ -135,6 +150,15 @@ function getExt(name) {
 function getStem(name) {
   const ext = getExt(name);
   return ext ? String(name).slice(0, -ext.length) : String(name || '');
+}
+
+function uploadFileName(item) {
+  const extension = item.ext || getExt(item.file?.name);
+  const rawName = String(item.name || getStem(item.file?.name) || 'file').trim();
+  const safeStem = extension && rawName.toLowerCase().endsWith(extension.toLowerCase())
+    ? rawName.slice(0, -extension.length)
+    : rawName;
+  return `${safeStem || 'file'}${extension}`;
 }
 
 function existingFilesForCategory(category) {
@@ -256,8 +280,7 @@ function buildOrderSaveFormData() {
     ...normalizePayload(),
     fileCategories: selectedUploads.value.map((item) => item.category || 'photos_documents'),
   }));
-  // Append the extension back so the server receives the full original filename
-  selectedUploads.value.forEach((item) => formData.append('files', item.file, (item.name || getStem(item.file.name)) + (item.ext || getExt(item.file.name))));
+  selectedUploads.value.forEach((item) => formData.append('files', item.file, uploadFileName(item)));
   return formData;
 }
 
@@ -301,19 +324,25 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="admin-panel case-form-page user-order-form-page">
+  <div class="view-root">
+    <section class="admin-panel case-form-page user-order-form-page">
     <ConfirmDialog />
     <div class="admin-section-header">
         <div>
           <p class="admin-kicker">Order Details</p>
           <h2>{{ isEditing ? 'Edit Order' : 'Add Order' }}</h2>
         </div>
-        <RouterLink
+        <button
+          v-if="isEditing"
           class="admin-link-button client-talk-button"
-          :to="isEditing ? `/dashboard/chats?orderId=${route.params.id}` : '/dashboard/chats?draftOrder=1'"
-        >
-          Client Talk
-        </RouterLink>
+          type="button"
+          @click="showClientTalk = true"
+        >Client Talk</button>
+        <span
+          v-else
+          class="admin-link-button client-talk-button client-talk-button--disabled"
+          title="Save the order first to start a Client Talk"
+        >Client Talk</span>
       </div>
 
     <p v-if="error" class="admin-error">{{ error }}</p>
@@ -421,7 +450,7 @@ onUnmounted(() => {
             <span class="file-count-badge">{{ existingFilesForCategory(category.key).length }} file{{ existingFilesForCategory(category.key).length === 1 ? '' : 's' }}</span>
           </header>
           <div class="file-list">
-            <article v-for="file in existingFilesForCategory(category.key)" :key="file.id" class="file-row">
+            <article v-for="file in existingFilesForCategory(category.key)" :key="file.id" class="file-row" :class="{ 'is-renaming': renamingFileId === file.id }">
               <!-- Icon -->
               <div class="file-row__icon" :class="file.mimeType?.includes('pdf') ? 'is-pdf' : 'is-doc'">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -454,15 +483,18 @@ onUnmounted(() => {
                   <span class="badge-saved">Saved</span>
                 </div>
               </div>
-              <!-- Actions -->
-              <div class="file-row__actions">
+              <!-- Actions: hidden during rename to prevent overlap -->
+              <div v-if="renamingFileId !== file.id" class="file-row__actions">
+                <!-- Download -->
+                <a class="file-action-btn" :href="fileDownloadUrl(file.id)" target="_blank" title="Download file" download>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </a>
                 <!-- Rename toggle -->
                 <button
                   type="button"
                   class="file-action-btn"
-                  :class="{ 'is-active': renamingFileId === file.id }"
                   title="Rename"
-                  @click="renamingFileId = renamingFileId === file.id ? null : file.id"
+                  @click="renamingFileId = file.id"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
@@ -527,19 +559,41 @@ onUnmounted(() => {
           </div>
         </div>
         <button class="admin-primary-button" type="submit" :disabled="loading">{{ loading ? 'Saving...' : (isEditing ? 'Save Changes' : 'Submit Order') }}</button>
-        <RouterLink
+        <button
+          v-if="isEditing"
           class="admin-link-button client-talk-button"
-          :to="isEditing ? `/dashboard/chats?orderId=${route.params.id}` : '/dashboard/chats?draftOrder=1'"
-        >
-          Client Talk
-        </RouterLink>
+          type="button"
+          @click="showClientTalk = true"
+        >Client Talk</button>
+        <span
+          v-else
+          class="admin-link-button client-talk-button client-talk-button--disabled"
+          title="Save the order first to start a Client Talk"
+        >Client Talk</span>
         <button class="admin-link-button" type="button" :disabled="loading" @click="router.back()">Cancel</button>
       </div>
     </form>
-  </section>
+    </section>
+
+    <ClientTalkModal
+      v-if="showClientTalk && isEditing"
+      :order-id="Number(route.params.id)"
+      :order-name="form.name || ''"
+      @close="showClientTalk = false"
+    />
+  </div>
 </template>
 
 <style scoped>
+.view-root { display: contents; }
+
+/* Disabled Client Talk button shown when no order saved yet */
+.client-talk-button--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .categorized-upload-grid {
   grid-column: 1 / -1;
   display: grid;
@@ -722,6 +776,7 @@ onUnmounted(() => {
   background: rgba(var(--rgb-foreground), 0.04);
   color: rgba(var(--rgb-foreground), 0.6);
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .file-action-btn svg { width: 15px; height: 15px; }
@@ -740,6 +795,16 @@ onUnmounted(() => {
   color: #f87171;
 }
 .file-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* During rename, actions are hidden via v-if — info takes full width */
+.file-row.is-renaming {
+  align-items: center;
+}
+
+.file-row.is-renaming .file-row__info {
+  flex: 1;
+  min-width: 0;
+}
 
 /* Copied toast */
 .copied-feedback {

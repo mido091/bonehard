@@ -217,6 +217,15 @@ function getStem(name) {
   return ext ? String(name).slice(0, -ext.length) : String(name || '');
 }
 
+function uploadFileName(item) {
+  const extension = item.ext || getExt(item.file?.name);
+  const rawName = String(item.name || getStem(item.file?.name) || 'file').trim();
+  const safeStem = extension && rawName.toLowerCase().endsWith(extension.toLowerCase())
+    ? rawName.slice(0, -extension.length)
+    : rawName;
+  return `${safeStem || 'file'}${extension}`;
+}
+
 function existingFilesForCategory(category) {
   return existingFiles.value.filter((file) => (file.uploadCategory || 'photos_documents') === category);
 }
@@ -285,7 +294,7 @@ function buildCaseSaveFormData() {
     ...normalizePayload(),
     fileCategories: selectedUploads.value.map((item) => item.category || 'photos_documents'),
   }));
-  selectedUploads.value.forEach((item) => formData.append('files', item.file, item.name || item.file.name));
+  selectedUploads.value.forEach((item) => formData.append('files', item.file, uploadFileName(item)));
   return formData;
 }
 
@@ -420,7 +429,7 @@ onUnmounted(() => {
             <span class="file-count-badge">{{ existingFilesForCategory(category.key).length }} file{{ existingFilesForCategory(category.key).length === 1 ? '' : 's' }}</span>
           </header>
           <div class="file-list">
-            <article v-for="file in existingFilesForCategory(category.key)" :key="file.id" class="file-row">
+            <article v-for="file in existingFilesForCategory(category.key)" :key="file.id" class="file-row" :class="{ 'is-renaming': renamingFileId === file.id }">
               <!-- Icon -->
               <div class="file-row__icon" :class="file.mimeType?.includes('pdf') ? 'is-pdf' : 'is-doc'">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -452,9 +461,12 @@ onUnmounted(() => {
                   <a :href="fileDownloadUrl(file.id)" target="_blank" class="meta-download" download>Download</a>
                 </div>
               </div>
-              <!-- Actions -->
-              <div class="file-row__actions">
-                <button type="button" class="file-action-btn" :class="{ 'is-active': renamingFileId === file.id }" title="Rename" @click="renamingFileId = renamingFileId === file.id ? null : file.id">
+              <!-- Actions: hidden during rename to prevent overlap -->
+              <div v-if="renamingFileId !== file.id" class="file-row__actions">
+                <a class="file-action-btn" :href="fileDownloadUrl(file.id)" target="_blank" title="Download file" download>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </a>
+                <button type="button" class="file-action-btn" title="Rename" @click="renamingFileId = file.id">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
                 <button type="button" class="file-action-btn" :title="copiedFileId === file.id ? 'Copied!' : 'Copy link'" @click="copyFileLink(file.id)">
@@ -706,6 +718,7 @@ onUnmounted(() => {
   background: rgba(var(--rgb-foreground), 0.04);
   color: rgba(var(--rgb-foreground), 0.6);
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .file-action-btn svg { width: 15px; height: 15px; }
@@ -721,6 +734,16 @@ onUnmounted(() => {
   color: #f87171;
 }
 .file-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* During rename, actions are hidden via v-if — info takes full width */
+.file-row.is-renaming {
+  align-items: center;
+}
+
+.file-row.is-renaming .file-row__info {
+  flex: 1;
+  min-width: 0;
+}
 
 .copied-feedback {
   position: absolute; bottom: 120%; left: 50%;

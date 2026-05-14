@@ -108,7 +108,7 @@ export function useClientTalk(orderId) {
       session.value = res.data;
       if (session.value?.id) {
         await subscribeToSession(session.value.id);
-        if (['active', 'ended'].includes(session.value.status)) {
+        if (['pending', 'active', 'ended'].includes(session.value.status)) {
           await fetchMessages();
         }
       }
@@ -127,8 +127,29 @@ export function useClientTalk(orderId) {
       const res = await api.post(`/api/user/orders/${orderId}/client-talk/request`);
       session.value = res.data;
       await subscribeToSession(session.value.id);
+      if (['pending', 'active', 'ended'].includes(session.value.status)) {
+        await fetchMessages();
+      }
     } catch (err) {
       error.value = err.message || 'Failed to send request';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /** Admin/assistant: open or reuse an order/case conversation immediately. */
+  async function openStaffTalk(targetId = orderId, resourceType = 'user-orders') {
+    loading.value = true;
+    error.value   = '';
+    try {
+      const res = await api.post(`/api/admin/${resourceType}/${targetId}/client-talk/open`);
+      session.value = res.data;
+      await subscribeToSession(session.value.id);
+      await fetchMessages();
+      return { success: true, session: res.data };
+    } catch (err) {
+      error.value = err.message || 'Failed to open Client Talk';
+      return { success: false };
     } finally {
       loading.value = false;
     }
@@ -256,6 +277,7 @@ export function useClientTalk(orderId) {
     // Actions
     fetchSession,
     requestTalk,
+    openStaffTalk,
     fetchMessages,
     sendMessage,
     acceptSession,

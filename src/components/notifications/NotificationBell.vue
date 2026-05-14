@@ -22,6 +22,8 @@ let channel = null;
 // State for admin/assistant Client Talk request modal
 const activeClientTalkReq = ref(null);
 const activeClientTalkSession = ref(null);
+const activeClientTalkUnread = ref(false);
+const activeClientTalkNotificationId = ref(null);
 
 // State for real-time premium pop-up toast notifications
 const activeToasts = ref([]);
@@ -123,6 +125,7 @@ async function restoreActiveClientTalkShortcut() {
       Number(session.assignedTo) === Number(currentUserId.value)
     ) {
       activeClientTalkSession.value = session;
+      activeClientTalkUnread.value = false;
       return;
     }
 
@@ -139,7 +142,35 @@ function handleClientTalkAccepted(session) {
 function handleClientTalkEnded(session) {
   clearRememberedClientTalk(session?.id);
   activeClientTalkSession.value = null;
+  activeClientTalkUnread.value = false;
+  activeClientTalkNotificationId.value = null;
   activeClientTalkReq.value = null;
+}
+
+async function markActiveClientTalkOpened() {
+  activeClientTalkUnread.value = false;
+
+  const notificationId = activeClientTalkNotificationId.value;
+  if (!notificationId) return;
+
+  const item = notifications.value.find((notification) =>
+    Number(notification.id) === Number(notificationId)
+  );
+
+  if (item && !item.readAt) {
+    item.readAt = new Date().toISOString();
+    unreadCount.value = Math.max(unreadCount.value - 1, 0);
+
+    try {
+      await api.patch(`/api/notifications/${notificationId}/read`, {});
+    } catch {
+      // The chat is already visible, so avoid interrupting the user for a
+      // non-critical read receipt failure. The next notification refresh will
+      // reconcile the server state.
+    }
+  }
+
+  activeClientTalkNotificationId.value = null;
 }
 
 async function loadNotifications() {
@@ -201,6 +232,19 @@ async function markRead(item) {
       };
       open.value = false;
       return;
+    }
+  }
+
+  if (item.type === 'client_talk_message' && data?.sessionId) {
+    try {
+      const response = await api.get(`/api/client-talk/sessions/${data.sessionId}`);
+      activeClientTalkSession.value = response.data;
+      activeClientTalkUnread.value = true;
+      activeClientTalkNotificationId.value = null;
+      open.value = false;
+      return;
+    } catch (err) {
+      error.value = err.message || 'Failed to open Client Talk';
     }
   }
 
@@ -308,6 +352,16 @@ function handleRealtimeNotification(payload) {
   setTimeout(() => {
     activeToasts.value = activeToasts.value.filter((t) => t.toastKey !== toastObj.toastKey);
   }, 5000);
+
+  if (incoming.type === 'client_talk_message' && incoming.dataJson?.sessionId) {
+    api.get(`/api/client-talk/sessions/${incoming.dataJson.sessionId}`)
+      .then((response) => {
+        activeClientTalkSession.value = response.data;
+        activeClientTalkUnread.value = true;
+        activeClientTalkNotificationId.value = incoming.id;
+      })
+      .catch(() => {});
+  }
 }
 
 function handleRealtimeDeletion(payload) {
@@ -358,6 +412,8 @@ watch(currentUserId, async (userId) => {
   unreadCount.value = 0;
   activeClientTalkReq.value = null;
   activeClientTalkSession.value = null;
+  activeClientTalkUnread.value = false;
+  activeClientTalkNotificationId.value = null;
 
   if (userId) {
     await loadNotifications();
@@ -397,12 +453,15 @@ onBeforeUnmount(() => {
 
     <ClientTalkModal
       v-if="activeClientTalkSession"
+      :key="activeClientTalkSession.id"
       :order-id="activeClientTalkSession.orderId"
       :order-name="activeClientTalkSession.orderName || ''"
       :initial-session="activeClientTalkSession"
       initial-minimized
+      :initial-unread="activeClientTalkUnread"
+      @opened="markActiveClientTalkOpened"
       @ended="handleClientTalkEnded"
-      @close="activeClientTalkSession = null"
+      @close="activeClientTalkSession = null; activeClientTalkUnread = false; activeClientTalkNotificationId = null"
     />
 
     <button

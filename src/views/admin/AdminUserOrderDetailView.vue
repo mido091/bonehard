@@ -7,6 +7,7 @@ import AdminSelect from '../../components/admin/AdminSelect.vue';
 import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
 import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
+import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
@@ -44,6 +45,9 @@ const uploadingFiles = ref(false);
 const deletingFileId = ref(null);
 const uploadDragOver = ref(false);
 const savingStatus = ref(false);
+const showClientTalk = ref(false);
+const clientTalkSession = ref(null);
+const openingClientTalk = ref(false);
 
 const vFocus = { mounted: (el) => el.focus() };
 
@@ -126,6 +130,22 @@ async function updateOrderStatus(statusId) {
     order.value = res.data || order.value;
   } catch (err) { error.value = err.message || 'Failed to update order status.'; }
   finally { savingStatus.value = false; }
+}
+
+async function openClientTalk() {
+  if (!order.value || openingClientTalk.value) return;
+  openingClientTalk.value = true;
+  error.value = '';
+
+  try {
+    const res = await api.post(`/api/admin/user-orders/${route.params.id}/client-talk/open`);
+    clientTalkSession.value = res.data;
+    showClientTalk.value = true;
+  } catch (err) {
+    error.value = err.message || 'Failed to open Client Talk.';
+  } finally {
+    openingClientTalk.value = false;
+  }
 }
 
 // ── Notes CRUD ─────────────────────────────────────────────────────────────────
@@ -284,6 +304,10 @@ onMounted(loadOrder);
           <h1 class="case-title">{{ order.name }}</h1>
         </div>
         <div class="hero-actions">
+          <button class="premium-btn-secondary" type="button" :disabled="openingClientTalk" @click="openClientTalk">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+            {{ openingClientTalk ? 'Opening...' : 'Client Talk' }}
+          </button>
           <button class="premium-btn-secondary" type="button" :disabled="exporting" @click="exportPackage">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             {{ exporting ? 'Preparing...' : 'Export PDF' }}
@@ -582,6 +606,15 @@ onMounted(loadOrder);
         </aside>
       </div>
     </div>
+
+    <ClientTalkModal
+      v-if="showClientTalk && clientTalkSession && order"
+      :order-id="order.id"
+      :order-name="order.name"
+      :initial-session="clientTalkSession"
+      @close="showClientTalk = false"
+      @ended="showClientTalk = false"
+    />
   </section>
 </template>
 

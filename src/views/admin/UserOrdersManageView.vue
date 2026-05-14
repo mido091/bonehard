@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
+import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
@@ -17,6 +18,9 @@ const statuses = ref([]);
 const filters = ref({ statusIds: [] });
 const statusMenuId = ref(null);
 const statusUpdatingId = ref(null);
+const clientTalkOrder = ref(null);
+const clientTalkSession = ref(null);
+const openingClientTalkId = ref(null);
 
 const totalPages = computed(() => Math.max(Math.ceil((meta.value.total || 0) / (meta.value.perPage || 20)), 1));
 
@@ -94,6 +98,22 @@ async function changeOrderStatus(order, status) {
     error.value = err.message || 'Failed to update order status.';
   } finally {
     statusUpdatingId.value = null;
+  }
+}
+
+async function openClientTalk(order) {
+  if (!order || openingClientTalkId.value) return;
+  openingClientTalkId.value = order.id;
+  error.value = '';
+
+  try {
+    const response = await api.post(`/api/admin/user-orders/${order.id}/client-talk/open`);
+    clientTalkOrder.value = order;
+    clientTalkSession.value = response.data;
+  } catch (err) {
+    error.value = err.message || 'Failed to open Client Talk.';
+  } finally {
+    openingClientTalkId.value = null;
   }
 }
 
@@ -185,8 +205,22 @@ onMounted(async () => {
                 <td data-label="Date">{{ formatDate(order.startDate || order.createdAt) }}</td>
                 <td data-label="Actions">
                   <div class="order-actions">
-                    <RouterLink class="admin-link-button" :to="`/admin/user-orders/${order.id}`">Details</RouterLink>
-                    <button class="case-options__trigger" style="color: #ffb4b4;" type="button" aria-label="Delete order" :disabled="actionLoading === `delete-${order.id}`" @click="deleteOrder(order)">
+                    <button
+                      class="icon-action-button icon-action-button--chat"
+                      type="button"
+                      :aria-label="`Open Client Talk for ${order.name}`"
+                      :title="openingClientTalkId === order.id ? 'Opening Client Talk' : 'Client Talk'"
+                      :disabled="openingClientTalkId === order.id"
+                      @click="openClientTalk(order)"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg>
+                    </button>
+                    <RouterLink class="icon-action-button" :to="`/admin/user-orders/${order.id}`" :aria-label="`Open details for ${order.name}`" title="Details">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </RouterLink>
+                    <button class="icon-action-button icon-action-button--danger" type="button" aria-label="Delete order" title="Delete order" :disabled="actionLoading === `delete-${order.id}`" @click="deleteOrder(order)">
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                     </button>
                   </div>
@@ -206,6 +240,15 @@ onMounted(async () => {
         <button class="admin-link-button" type="button" :disabled="meta.page >= totalPages" @click="changePage(meta.page + 1)">Next</button>
       </div>
     </div>
+
+    <ClientTalkModal
+      v-if="clientTalkOrder && clientTalkSession"
+      :order-id="clientTalkOrder.id"
+      :order-name="clientTalkOrder.name || ''"
+      :initial-session="clientTalkSession"
+      @close="clientTalkOrder = null; clientTalkSession = null"
+      @ended="clientTalkOrder = null; clientTalkSession = null"
+    />
   </section>
 </template>
 
@@ -251,6 +294,64 @@ onMounted(async () => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.icon-action-button {
+  width: 2.75rem;
+  height: 2.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--admin-border, rgba(var(--rgb-foreground), 0.12));
+  border-radius: 0.65rem;
+  background: rgba(var(--rgb-foreground), 0.04);
+  color: var(--color-text-strong);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.icon-action-button:hover:not(:disabled) {
+  border-color: rgba(var(--rgb-accent), 0.34);
+  background: rgba(var(--rgb-foreground), 0.1);
+  transform: translateY(-1px);
+}
+
+.icon-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+}
+
+.icon-action-button--chat {
+  border-color: rgba(52, 211, 153, 0.24);
+  color: #34d399;
+}
+
+.icon-action-button--chat:hover:not(:disabled) {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.icon-action-button--danger {
+  border-color: rgba(248, 113, 113, 0.2);
+  color: #ffb4b4;
+}
+
+.icon-action-button--danger:hover:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.icon-action-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
 }
 
 .inline-status-control {
@@ -348,8 +449,17 @@ onMounted(async () => {
 
 @media (max-width: 640px) {
   .order-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    justify-content: flex-end;
+  }
+
+  .order-actions .icon-action-button {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0;
   }
 }
 </style>

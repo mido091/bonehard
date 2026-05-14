@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
+import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { api } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { statusProgressPercent } from '../../constants/workflowOptions';
@@ -35,6 +36,9 @@ const actionMenuId = ref(null);
 const statusFilterOpen = ref(false);
 const statusMenuId = ref(null);
 const statusUpdatingId = ref(null);
+const clientTalkCase = ref(null);
+const clientTalkSession = ref(null);
+const openingClientTalkId = ref(null);
 
 const totalPages = computed(() => Math.max(Math.ceil(meta.value.total / meta.value.perPage), 1));
 const selectedStatusLabel = computed(() => {
@@ -153,6 +157,23 @@ async function changeCaseStatus(item, status) {
     error.value = err.message || 'Failed to update case status.';
   } finally {
     statusUpdatingId.value = null;
+  }
+}
+
+async function openClientTalk(item) {
+  if (!item || openingClientTalkId.value) return;
+  openingClientTalkId.value = item.id;
+  actionMenuId.value = null;
+  error.value = '';
+
+  try {
+    const response = await api.post(`/api/admin/cases/${item.id}/client-talk/open`);
+    clientTalkCase.value = item;
+    clientTalkSession.value = response.data;
+  } catch (err) {
+    error.value = err.message || 'Failed to open Client Talk.';
+  } finally {
+    openingClientTalkId.value = null;
   }
 }
 
@@ -333,6 +354,10 @@ onMounted(async () => {
               <span></span><span></span><span></span>
             </button>
             <div v-if="actionMenuId === item.id" class="case-options__menu">
+              <button class="case-options__item case-options__item--accent" type="button" :disabled="openingClientTalkId === item.id" @click="openClientTalk(item); actionMenuId = null">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                <span>{{ openingClientTalkId === item.id ? 'Opening...' : 'Client Talk' }}</span>
+              </button>
               <RouterLink class="case-options__item" :to="`/admin/cases/${item.id}/edit`">Edit</RouterLink>
               <button class="case-options__item case-options__item--danger" type="button" @click="archiveCase(item.id)">Delete</button>
             </div>
@@ -340,8 +365,8 @@ onMounted(async () => {
         </article>
       </div>
 
-      <div v-else class="admin-table-wrap">
-        <table class="admin-table responsive-table">
+      <div v-else class="admin-table-wrap cases-table-wrap">
+        <table class="admin-table responsive-table cases-table">
           <thead>
             <tr>
               <th><button class="admin-sort-button" type="button" @click="cycleSort('name')">Name</button></th>
@@ -397,6 +422,10 @@ onMounted(async () => {
                     <span></span><span></span><span></span>
                   </button>
                   <div v-if="actionMenuId === item.id" class="case-options__menu">
+                    <button class="case-options__item case-options__item--accent" type="button" :disabled="openingClientTalkId === item.id" @click="openClientTalk(item); actionMenuId = null">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                      <span>{{ openingClientTalkId === item.id ? 'Opening...' : 'Client Talk' }}</span>
+                    </button>
                     <RouterLink class="case-options__item" :to="`/admin/cases/${item.id}/edit`">Edit</RouterLink>
                     <button class="case-options__item case-options__item--danger" type="button" @click="archiveCase(item.id)">Delete</button>
                   </div>
@@ -413,6 +442,15 @@ onMounted(async () => {
         <button class="admin-link-button" type="button" :disabled="filters.page >= totalPages" @click="changePage(filters.page + 1)">Next</button>
       </div>
     </div>
+
+    <ClientTalkModal
+      v-if="clientTalkCase && clientTalkSession"
+      :order-id="clientTalkCase.id"
+      :order-name="clientTalkCase.name || ''"
+      :initial-session="clientTalkSession"
+      @close="clientTalkCase = null; clientTalkSession = null"
+      @ended="clientTalkCase = null; clientTalkSession = null"
+    />
   </section>
 </template>
 
@@ -638,14 +676,16 @@ onMounted(async () => {
 }
 
 .admin-table-wrap:has(.case-options__menu),
-.admin-table-wrap:has(.inline-status-menu) {
+.admin-table-wrap:has(.inline-status-menu),
+.case-card-grid:has(.case-options__menu) {
   overflow: visible;
 }
 
 .admin-table tbody tr:has(.case-options__menu),
-.admin-table tbody tr:has(.inline-status-menu) {
+.admin-table tbody tr:has(.inline-status-menu),
+.case-card:has(.case-options__menu) {
   position: relative;
-  z-index: 220;
+  z-index: 1200;
 }
 
 .case-options {
@@ -656,7 +696,7 @@ onMounted(async () => {
 }
 
 .case-options:has(.case-options__menu) {
-  z-index: 200;
+  z-index: 1300;
 }
 
 .case-options__trigger {
@@ -685,7 +725,7 @@ onMounted(async () => {
   position: absolute;
   top: calc(100% + 0.45rem);
   right: 0;
-  z-index: 300;
+  z-index: 1400;
   width: 12.5rem;
   padding: 0.45rem;
   border: 1px solid var(--admin-border, rgba(var(--rgb-foreground),0.12));
@@ -700,7 +740,9 @@ onMounted(async () => {
 
 .case-options__item {
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   border: 0;
   border-radius: 0.55rem;
   background: transparent;
@@ -713,10 +755,25 @@ onMounted(async () => {
   text-decoration: none;
 }
 
+.case-options__item svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
 .case-options__item:hover,
 .case-options__item--active {
   background: rgba(var(--rgb-accent), 0.1);
   color: #ffffff;
+}
+
+.case-options__item--accent {
+  color: #34d399;
 }
 
 .case-options__item--danger {
@@ -794,6 +851,48 @@ onMounted(async () => {
   color: #0f172a;
 }
 
+:global(body.light-mode .case-options__menu),
+:global(.light-mode .case-options__menu),
+:global([data-theme="light"] .case-options__menu) {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18) !important;
+}
+
+:global(body.light-mode .case-options__item),
+:global(.light-mode .case-options__item),
+:global([data-theme="light"] .case-options__item) {
+  color: #172033 !important;
+}
+
+:global(body.light-mode .case-options__item:hover),
+:global(body.light-mode .case-options__item--active),
+:global(.light-mode .case-options__item:hover),
+:global(.light-mode .case-options__item--active),
+:global([data-theme="light"] .case-options__item:hover),
+:global([data-theme="light"] .case-options__item--active) {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
+}
+
+:global(body.light-mode .case-options__item--accent),
+:global(.light-mode .case-options__item--accent),
+:global([data-theme="light"] .case-options__item--accent) {
+  color: #047857 !important;
+}
+
+:global(body.light-mode .case-options__item--danger),
+:global(.light-mode .case-options__item--danger),
+:global([data-theme="light"] .case-options__item--danger) {
+  color: #b42318 !important;
+}
+
+:global(body.light-mode .case-options__divider),
+:global(.light-mode .case-options__divider),
+:global([data-theme="light"] .case-options__divider) {
+  background: rgba(15, 23, 42, 0.1) !important;
+}
+
 @keyframes case-menu-in {
   from {
     opacity: 0;
@@ -816,16 +915,146 @@ onMounted(async () => {
     min-width: 0;
   }
 
-  .case-options,
+  .case-options {
+    width: auto;
+    justify-content: flex-end;
+  }
+
   .case-options__trigger {
-    width: 100%;
+    width: 2.75rem;
+    min-width: 2.75rem;
   }
 
   .case-options__menu {
-    left: 0;
-    right: auto;
-    width: min(100%, 13rem);
+    left: auto;
+    right: 0;
+    width: min(13rem, calc(100vw - 3rem));
   }
+
+  .responsive-table,
+  .responsive-table tbody,
+  .responsive-table tr:has(.case-options__menu),
+  .responsive-table td:has(.case-options__menu) {
+    overflow: visible !important;
+  }
+
+  .responsive-table tr:has(.case-options__menu) {
+    z-index: 1600;
+  }
+
+  .responsive-table tr:has(.case-options__menu) + tr {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .cases-table-wrap {
+    overflow: visible !important;
+  }
+
+  .cases-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+
+  .cases-table thead {
+    display: none !important;
+  }
+
+  .cases-table,
+  .cases-table tbody,
+  .cases-table tr,
+  .cases-table td {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cases-table tr {
+    position: relative;
+    margin: 0 0 0.8rem !important;
+    overflow: hidden !important;
+    border: 1px solid var(--admin-border, rgba(var(--rgb-foreground), 0.12)) !important;
+    border-radius: 0.85rem !important;
+    background: rgba(var(--rgb-foreground), 0.035) !important;
+  }
+
+  .cases-table tr:has(.case-options__menu),
+  .cases-table tr:has(.inline-status-menu) {
+    z-index: 1800;
+    overflow: visible !important;
+  }
+
+  .cases-table td {
+    display: grid !important;
+    grid-template-columns: minmax(6.5rem, 34%) minmax(0, 1fr);
+    align-items: center !important;
+    gap: 0.75rem !important;
+    padding: 0.78rem 1rem !important;
+    border-bottom: 1px solid rgba(var(--rgb-foreground), 0.07) !important;
+    text-align: right !important;
+  }
+
+  .cases-table td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .cases-table td::before {
+    content: attr(data-label);
+    grid-column: 1;
+    color: rgba(var(--rgb-foreground), 0.52);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .cases-table td > * {
+    grid-column: 2;
+    min-width: 0;
+    max-width: 100%;
+    justify-self: end;
+  }
+
+  .cases-table td:has(.case-options__menu) {
+    position: relative;
+    z-index: 2001;
+    overflow: visible !important;
+  }
+
+  .cases-table .case-progress {
+    width: min(14rem, 100%);
+  }
+
+  .cases-table .case-progress__label {
+    display: block;
+    margin-top: 0.25rem;
+    text-align: right;
+  }
+
+  .cases-table .case-options {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .cases-table .case-options__menu {
+    right: 0;
+    left: auto;
+    z-index: 3000;
+    width: min(13rem, calc(100vw - 3rem));
+  }
+}
+
+@media (max-width: 520px) {
+  .cases-table td {
+    grid-template-columns: minmax(5.4rem, 32%) minmax(0, 1fr);
+    padding: 0.72rem 0.82rem !important;
+  }
+
 }
 
 /* New Advanced Filter Panel Styles */
@@ -913,5 +1142,47 @@ onMounted(async () => {
   background: rgba(var(--rgb-background), 0.3) !important;
   border-color: rgba(168, 155, 249, 0.5) !important;
   box-shadow: 0 0 0 2px rgba(168, 155, 249, 0.2) !important;
+}
+
+.client-talk-row-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  min-height: 2.45rem;
+  white-space: nowrap;
+  border-color: rgba(52, 211, 153, 0.24);
+  color: #34d399;
+}
+
+.client-talk-row-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.client-talk-row-button:hover:not(:disabled) {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+@media (max-width: 760px) {
+  .case-options {
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .case-options .case-options__trigger {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0;
+  }
 }
 </style>

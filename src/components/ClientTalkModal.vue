@@ -6,7 +6,7 @@
  *
  * States:
  *   loading   → Initial fetch in progress
- *   waiting   → Session pending, no admin joined yet
+ *   active    → Live conversation, even before the other participant opens it
  *   active    → Live conversation
  *   ended     → Conversation closed
  *   error     → Something went wrong
@@ -21,19 +21,24 @@ const props = defineProps({
   // Optional: pre-populated session (used by admin after accepting — avoids user-only endpoint)
   initialSession: { type: Object, default: null },
   initialMinimized: { type: Boolean, default: false },
+  initialUnread: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['close', 'ended']);
+const emit = defineEmits(['close', 'ended', 'opened']);
 
 const messageInput = ref('');
 const messagesEl   = ref(null);
 const inputEl      = ref(null);
+const hasUnread    = ref(Boolean(props.initialUnread));
+const unreadTrackingReady = ref(false);
 
 const {
   session, messages, status, loading, sending, ending, error,
   fetchSession, requestTalk, sendMessage, endSession,
   subscribeToSession, fetchMessages,
 } = useClientTalk(props.orderId);
+
+const chatStatus = computed(() => (status.value === 'pending' ? 'active' : status.value));
 
 // ── Linkify: convert plain-text URLs to safe anchor tags ──────────────────
 function linkifySegments(text) {
@@ -68,7 +73,22 @@ async function scrollToBottom() {
   }
 }
 
-watch(messages, scrollToBottom, { deep: true });
+watch(messages, (next, previous) => {
+  const latest = next[next.length - 1];
+  const previousLength = previous?.length || 0;
+
+  if (
+    latest
+    && next.length > previousLength
+    && unreadTrackingReady.value
+    && minimized.value
+    && Number(latest.senderId) !== Number(currentUserId.value)
+  ) {
+    hasUnread.value = true;
+  }
+
+  scrollToBottom();
+}, { deep: true });
 
 // Submit handler
 async function handleSend() {
@@ -94,10 +114,11 @@ onMounted(async () => {
     // Admin path: session already accepted, skip user-only fetchSession
     session.value = props.initialSession;
     await subscribeToSession(props.initialSession.id);
-    if (['active', 'ended'].includes(props.initialSession.status)) {
+    if (['pending', 'active', 'ended'].includes(props.initialSession.status)) {
       await fetchMessages();
       await scrollToBottom();
     }
+    unreadTrackingReady.value = true;
     return;
   }
 
@@ -105,9 +126,14 @@ onMounted(async () => {
   await fetchSession();
   if (!session.value) {
     await requestTalk();
-  } else if (session.value.status === 'active') {
+    if (['pending', 'active'].includes(session.value?.status)) {
+      await scrollToBottom();
+      inputEl.value?.focus();
+    }
+  } else if (['pending', 'active'].includes(session.value.status)) {
     await scrollToBottom();
   }
+  unreadTrackingReady.value = true;
 });
 
 onUnmounted(() => {
@@ -117,8 +143,16 @@ onUnmounted(() => {
 // Minimized state to allow hiding chat window without disconnecting
 const minimized = ref(Boolean(props.initialMinimized));
 
+watch(() => props.initialUnread, (value) => {
+  if (value && minimized.value) hasUnread.value = true;
+});
+
 watch(minimized, (val) => {
   document.body.style.overflow = val ? '' : 'hidden';
+  if (!val) {
+    hasUnread.value = false;
+    emit('opened', session.value);
+  }
 });
 
 // Minimize on Escape key instead of closing
@@ -129,7 +163,7 @@ onMounted(() => document.addEventListener('keydown', handleEscape));
 onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 const canSend = computed(() =>
-  status.value === 'active' && messageInput.value.trim().length > 0 && !sending.value
+  chatStatus.value === 'active' && messageInput.value.trim().length > 0 && !sending.value
 );
 const currentUserId = computed(() => authState.user?.id || null);
 
@@ -164,7 +198,7 @@ watch(status, (newStatus) => {
           <div class="ct-header__actions">
             <!-- End button — only when active -->
             <button
-              v-if="status === 'active'"
+              v-if="chatStatus === 'active'"
               class="ct-btn ct-btn--danger"
               :disabled="ending"
               title="End conversation"
@@ -188,17 +222,8 @@ watch(status, (newStatus) => {
             <p>Connecting…</p>
           </div>
 
-          <!-- Waiting for team -->
-          <div v-else-if="status === 'pending'" class="ct-state ct-state--waiting">
-            <div class="ct-waiting-ring" aria-hidden="true">
-              <div class="ct-waiting-ring__inner"></div>
-            </div>
-            <h3 class="ct-state__title">Connecting you with the BoneHard team</h3>
-            <p class="ct-state__sub">Please stay on this page. A team member will join shortly.</p>
-          </div>
-
           <!-- Ended banner -->
-          <div v-else-if="status === 'ended' && !messages.length" class="ct-state">
+          <div v-else-if="chatStatus === 'ended' && !messages.length" class="ct-state">
             <svg class="ct-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
             <p>Conversation ended.</p>
           </div>
@@ -212,7 +237,7 @@ watch(status, (newStatus) => {
           <!-- Messages -->
           <div v-else ref="messagesEl" class="ct-messages" role="log" aria-live="polite" aria-label="Conversation messages">
             <!-- Ended top banner when there are messages -->
-            <div v-if="status === 'ended'" class="ct-ended-banner">
+            <div v-if="chatStatus === 'ended'" class="ct-ended-banner">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               Conversation ended
             </div>
@@ -246,7 +271,7 @@ watch(status, (newStatus) => {
         </div>
 
         <!-- ── Footer / Input ─────────────────────────────────────────── -->
-        <footer v-if="status === 'active'" class="ct-footer">
+        <footer v-if="chatStatus === 'active'" class="ct-footer">
           <textarea
             ref="inputEl"
             v-model="messageInput"
@@ -269,7 +294,7 @@ watch(status, (newStatus) => {
         </footer>
 
         <!-- Ended — read-only note -->
-        <footer v-else-if="status === 'ended'" class="ct-footer ct-footer--ended">
+        <footer v-else-if="chatStatus === 'ended'" class="ct-footer ct-footer--ended">
           <p>This conversation has ended.</p>
         </footer>
 
@@ -291,7 +316,11 @@ watch(status, (newStatus) => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         </span>
         <span class="ct-floating-bubble__text">Client Talk</span>
-        <span v-if="status === 'active'" class="ct-floating-bubble__live-dot"></span>
+        <span
+          v-if="hasUnread || status === 'active'"
+          class="ct-floating-bubble__live-dot"
+          :class="{ 'ct-floating-bubble__live-dot--unread': hasUnread }"
+        ></span>
       </button>
     </Transition>
   </Teleport>
@@ -858,6 +887,13 @@ watch(status, (newStatus) => {
   background: #10b981;
   box-shadow: 0 0 8px #10b981;
   animation: ct-pulse 2s infinite ease-in-out;
+}
+
+.ct-floating-bubble__live-dot--unread {
+  width: 10px;
+  height: 10px;
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16), 0 0 12px rgba(239, 68, 68, 0.9);
 }
 
 @keyframes ct-bubble-pop {

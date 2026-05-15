@@ -6,6 +6,7 @@ import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
 import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { statusProgressPercent } from '../../constants/workflowOptions';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const route = useRoute();
 const order = ref(null);
@@ -296,7 +297,7 @@ onMounted(loadOrder);
                 </div>
                 <div class="case-upload-meta">
                   <span>{{ formatFileSize(file.fileSize) }}</span>
-                  <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
+                  <span>{{ formatCairoFileDateTime(file.updatedAt || file.createdAt) }}</span>
                 </div>
               </div>
             </article>

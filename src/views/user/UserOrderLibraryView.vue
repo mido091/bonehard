@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { api } from '../../services/api';
 import { UPLOAD_CATEGORIES } from '../../constants/uploadOptions';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const route = useRoute();
 const rows = ref([]);
@@ -147,7 +148,7 @@ onMounted(loadRows);
                 <span class="library-item__icon">FILE</span>
                 <span>
                   <strong>{{ item.fileName }}</strong>
-                  <small>{{ categoryLabel(item.uploadCategory) }} · {{ formatDate(item.createdAt || item.updatedAt) }}</small>
+                  <small>{{ categoryLabel(item.uploadCategory) }} · {{ formatCairoFileDateTime(item.createdAt || item.updatedAt) }}</small>
                 </span>
               </a>
             </template>

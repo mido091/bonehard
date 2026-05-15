@@ -1,0 +1,1 @@
+function r(t){if(!t)return"Not provided";const e=new Date(t);return Number.isNaN(e.getTime())?String(t):new Intl.DateTimeFormat("en-US",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"2-digit",hour:"numeric",minute:"2-digit",hour12:!0}).format(e)}export{r as f};

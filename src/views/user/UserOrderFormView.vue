@@ -12,6 +12,7 @@ import { API_BASE_URL, api } from '../../services/api';
 import { uploadFilesDirectly } from '../../services/directUploads';
 import { authState, loadCurrentUser } from '../../stores/authStore';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 import {
   CASE_ALLOWED_UPLOAD_EXTENSIONS,
   CASE_UPLOAD_ACCEPT,
@@ -490,7 +491,7 @@ onUnmounted(() => {
                 <div class="file-row__meta">
                   <span>{{ formatFileSize(file.fileSize) }}</span>
                   <span class="meta-sep">·</span>
-                  <span>{{ new Date(file.updatedAt || file.createdAt).toLocaleDateString() }}</span>
+                  <span>{{ formatCairoFileDateTime(file.updatedAt || file.createdAt) }}</span>
                   <span class="meta-sep">·</span>
                   <span class="badge-saved">Saved</span>
                 </div>

@@ -5938,6 +5938,55 @@ iframe:focus-visible {
   font-weight: 500;
 }
 
+[data-theme="light"] .case-upload-dropzone {
+  background: #fffaf2;
+  border: 1px dashed rgba(197, 112, 29, 0.28);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .case-upload-dropzone .dropzone-content {
+  border-color: rgba(197, 112, 29, 0.24);
+  background:
+    radial-gradient(circle at top, rgba(255, 226, 179, 0.42), transparent 58%),
+    linear-gradient(180deg, #ffffff 0%, #fff7eb 100%);
+  color: #172033;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .case-upload-dropzone .dropzone-content::before {
+  background: radial-gradient(circle at center, rgba(197, 112, 29, 0.1) 0%, transparent 68%);
+}
+
+[data-theme="light"] .case-upload-dropzone:hover .dropzone-content,
+[data-theme="light"] .case-upload-dropzone:focus-within .dropzone-content {
+  border-color: rgba(197, 112, 29, 0.58);
+  background:
+    radial-gradient(circle at top, rgba(255, 226, 179, 0.58), transparent 62%),
+    linear-gradient(180deg, #ffffff 0%, #fff3df 100%);
+  box-shadow: inset 0 0 0 1px rgba(197, 112, 29, 0.12), 0 18px 34px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .case-upload-dropzone .dropzone-icon {
+  background: #fff0d6;
+  color: #c56d13;
+  border: 1px solid rgba(197, 112, 29, 0.22);
+  box-shadow: 0 10px 24px rgba(197, 112, 29, 0.13);
+}
+
+[data-theme="light"] .case-upload-dropzone:hover .dropzone-icon {
+  background: #d97706;
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(197, 112, 29, 0.24), 0 0 0 8px rgba(217, 119, 6, 0.1);
+}
+
+[data-theme="light"] .case-upload-dropzone .case-upload-dropzone__title {
+  color: #172033;
+}
+
+[data-theme="light"] .case-upload-dropzone .case-upload-dropzone__hint {
+  color: #64748b;
+}
+
 /* Mobile Adjustments */
 @media (max-width: 640px) {
   .case-files-section {

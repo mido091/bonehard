@@ -10,6 +10,7 @@ import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vu
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { statusProgressPercent } from '../../constants/workflowOptions';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const route = useRoute();
 const { showConfirm } = useConfirmDialog();
@@ -536,7 +537,7 @@ onMounted(async () => {
                   <div class="file-row__meta">
                     <span>{{ formatFileSize(file.fileSize) }}</span>
                     <span class="meta-sep">·</span>
-                    <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
+                    <span>{{ formatCairoFileDateTime(file.updatedAt || file.createdAt) }}</span>
                   </div>
                 </div>
                 <!-- Actions: hidden while renaming to avoid layout overlap -->

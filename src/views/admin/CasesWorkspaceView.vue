@@ -6,6 +6,7 @@ import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import { api, API_BASE_URL } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { CASE_UPLOAD_ACCEPT, UPLOAD_CATEGORIES, uploadCategoryLabel } from '../../constants/uploadOptions';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const { showConfirm, showAlert } = useConfirmDialog();
 const route = useRoute();
@@ -768,9 +769,9 @@ onMounted(loadRows);
                 </span>
                 <strong v-else>{{ row.fileName }}</strong>
                 <small class="files-detail-line">{{ displayUploadCategory(row) }} - {{ formatFileSize(row.fileSize) }}</small>
-                <small class="files-detail-line">Uploaded by {{ row.uploadedByName || 'Unknown' }} - {{ formatDate(row.updatedAt || row.createdAt) }}</small>
+                <small class="files-detail-line">Uploaded by {{ row.uploadedByName || 'Unknown' }} - {{ formatCairoFileDateTime(row.updatedAt || row.createdAt) }}</small>
                 <small>{{ compactUploadCategoryLabel(row.uploadCategory) }} · {{ formatFileSize(row.fileSize) }}</small>
-                <small>Uploaded by {{ row.uploadedByName || 'Unknown' }} · {{ formatDate(row.updatedAt || row.createdAt) }}</small>
+                <small>Uploaded by {{ row.uploadedByName || 'Unknown' }} · {{ formatCairoFileDateTime(row.updatedAt || row.createdAt) }}</small>
               </span>
               <span class="files-file-card__meta">
                 <span class="files-chip" :class="`files-chip--${row.folderType || 'private'}`">{{ row.folderType || 'private' }}</span>
@@ -965,7 +966,7 @@ onMounted(loadRows);
                 </td>
                 <td data-label="Category">{{ row.uploadCategory || 'photos_documents' }}</td>
                 <td data-label="Visibility">{{ row.folderType || 'private' }}</td>
-                <td data-label="Uploaded">{{ row.updatedAt || row.createdAt }}</td>
+                <td data-label="Uploaded">{{ formatCairoFileDateTime(row.updatedAt || row.createdAt) }}</td>
               </tr>
             </template>
             <template v-else-if="config.type === 'notes'">

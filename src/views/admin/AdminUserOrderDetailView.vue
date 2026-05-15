@@ -11,6 +11,7 @@ import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const route = useRoute();
 const { showConfirm } = useConfirmDialog();
@@ -577,7 +578,7 @@ onMounted(loadOrder);
                     </span>
                     <span>{{ formatFileSize(file.fileSize) }}</span>
                     <span class="meta-sep">·</span>
-                    <span>{{ formatDate(file.updatedAt || file.createdAt) }}</span>
+                    <span>{{ formatCairoFileDateTime(file.updatedAt || file.createdAt) }}</span>
                   </div>
                 </div>
                 <!-- Actions: hidden during rename to prevent overlap -->

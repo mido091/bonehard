@@ -8,6 +8,7 @@ import AdminSelect from '../../components/admin/AdminSelect.vue';
 import WorkflowFields from '../../components/admin/WorkflowFields.vue';
 import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { formatCairoFileDateTime } from '../../utils/dateTime';
 import {
   CASE_ALLOWED_UPLOAD_EXTENSIONS,
   CASE_UPLOAD_ACCEPT,
@@ -460,7 +461,7 @@ onUnmounted(() => {
                 <div class="file-row__meta">
                   <span>{{ formatFileSize(file.fileSize) }}</span>
                   <span class="meta-sep">·</span>
-                  <span>{{ new Date(file.updatedAt || file.createdAt).toLocaleDateString() }}</span>
+                  <span>{{ formatCairoFileDateTime(file.updatedAt || file.createdAt) }}</span>
                   <span class="meta-sep">·</span>
                   <a :href="fileDownloadUrl(file.id)" target="_blank" class="meta-download" download>Download</a>
                 </div>

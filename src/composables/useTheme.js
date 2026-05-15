@@ -1,17 +1,19 @@
-import { ref, watch, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 
-const theme = ref('dark'); // Default to dark as requested
+const getInitialTheme = () => {
+  try {
+    const stored = localStorage.getItem('theme');
+    if (stored) return stored;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+  } catch (e) {}
+  return 'dark'; // Default to dark
+};
+
+const theme = ref(getInitialTheme());
 
 export function useTheme() {
   const initTheme = () => {
-    const stored = localStorage.getItem('theme');
-    if (stored) {
-      theme.value = stored;
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      theme.value = 'light';
-    } else {
-      theme.value = 'dark';
-    }
+    theme.value = getInitialTheme();
     applyTheme(theme.value);
   };
 

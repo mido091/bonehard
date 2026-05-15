@@ -67,6 +67,32 @@
       "sameAs": []
     }
     </script>
+
+    <!-- ── Theme Initialization & FOUC Prevention ────── -->
+    <!--
+      This runs synchronously BEFORE the browser renders anything.
+      We apply background-color as a direct inline style to guarantee
+      no flash occurs while Vite loads styles.css and its CSS variables.
+    -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('theme');
+          var theme = 'dark';
+          if (stored === 'light' || stored === 'dark') {
+            theme = stored;
+          } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            theme = 'light';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          // Apply background-color directly via inline style so it takes effect
+          // immediately, before any CSS file (and its variables) is parsed.
+          var bg = theme === 'light' ? '#ffffff' : '#000000';
+          document.documentElement.style.backgroundColor = bg;
+          document.documentElement.style.margin = '0';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

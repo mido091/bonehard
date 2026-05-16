@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
 import { api, API_BASE_URL } from '../../services/api';
+import { uploadFilesDirectly } from '../../services/directUploads';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { CASE_UPLOAD_ACCEPT, UPLOAD_CATEGORIES, uploadCategoryLabel } from '../../constants/uploadOptions';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
@@ -75,6 +76,20 @@ const generalNoteForm = reactive({
   referenceLinks: [],
   files: [],
 });
+
+async function uploadWorkspaceFiles(files, folderKey, options = {}) {
+  return uploadFilesDirectly({
+    uploads: files.map((file) => ({
+      file,
+      category: options.uploadCategory || 'photos_documents',
+      uploadCategoryOtherLabel: options.uploadCategoryOtherLabel || '',
+      visibility: options.visibility || '',
+    })),
+    signPath: '/api/cases/uploads/sign',
+    folderKey,
+    fileNameFor: (item) => item.file.name,
+  });
+}
 
 // Bulk actions state
 const selectedTaskIds = ref(new Set());
@@ -595,14 +610,21 @@ async function uploadGeneralLibraryFile() {
   }
   savingLibraryItem.value = true;
   try {
-    const formData = new FormData();
-    formData.append('visibility', generalFileVisibility.value);
-    formData.append('uploadCategory', generalFileCategory.value);
-    formData.append('uploadCategoryOtherLabel', generalFileCategoryOtherLabel.value.trim());
-    generalFiles.value.forEach(file => {
-      formData.append('files', file);
+    const uploadedFiles = await uploadWorkspaceFiles(
+      generalFiles.value,
+      'general-library',
+      {
+        visibility: generalFileVisibility.value,
+        uploadCategory: generalFileCategory.value,
+        uploadCategoryOtherLabel: generalFileCategoryOtherLabel.value.trim(),
+      },
+    );
+    await api.post('/api/cases/files/general/finalize', {
+      visibility: generalFileVisibility.value,
+      uploadCategory: generalFileCategory.value,
+      uploadCategoryOtherLabel: generalFileCategoryOtherLabel.value.trim(),
+      files: uploadedFiles,
     });
-    await api.upload('/api/cases/files/general', formData);
     closeFileModal();
     await loadRows();
   } catch (err) {
@@ -644,12 +666,15 @@ async function saveGeneralLibraryNote() {
       const noteId = createdNoteData?.id || editingNote.value?.id;
       
       if (noteId) {
-        const formData = new FormData();
-        newFiles.forEach(f => formData.append('files', f));
+        const uploadedFiles = await uploadWorkspaceFiles(
+          newFiles,
+          caseId ? String(caseId) : `general-note-${noteId}`,
+          { uploadCategory: 'photos_documents', visibility: generalNoteForm.visibility },
+        );
         const endpoint = caseId
-          ? `/api/cases/${caseId}/general-notes/${noteId}/attachments`
-          : `/api/cases/notes/general/${noteId}/attachments`;
-        await api.upload(endpoint, formData);
+          ? `/api/cases/${caseId}/general-notes/${noteId}/attachments/finalize`
+          : `/api/cases/notes/general/${noteId}/attachments/finalize`;
+        await api.post(endpoint, { files: uploadedFiles });
       }
     }
 
@@ -791,13 +816,15 @@ async function onNoteAttachmentSelected(event) {
 
   savingLibraryItem.value = true;
   try {
-    const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
-
+    const uploadedFiles = await uploadWorkspaceFiles(
+      files,
+      caseId ? String(caseId) : `general-note-${noteId}`,
+      { uploadCategory: 'photos_documents' },
+    );
     const endpoint = caseId
-      ? `/api/cases/${caseId}/general-notes/${noteId}/attachments`
-      : `/api/cases/notes/general/${noteId}/attachments`;
-    const res = await api.upload(endpoint, formData);
+      ? `/api/cases/${caseId}/general-notes/${noteId}/attachments/finalize`
+      : `/api/cases/notes/general/${noteId}/attachments/finalize`;
+    const res = await api.post(endpoint, { files: uploadedFiles });
 
     const attachments = res.data;
     if (noteRow && attachments) {

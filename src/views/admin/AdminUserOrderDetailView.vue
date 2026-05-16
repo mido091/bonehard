@@ -13,6 +13,7 @@ import ClientTalkTranscriptModal from '../../components/ClientTalkTranscriptModa
 import { useClientTalkHistory } from '../../composables/useClientTalkHistory';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
+import { uploadFilesDirectly } from '../../services/directUploads';
 import { authState } from '../../stores/authStore';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
@@ -255,10 +256,21 @@ function onFileInputChange(e) {
 async function uploadAdminFiles(files) {
   uploadingFiles.value = true; error.value = '';
   try {
-    const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
-    formData.append('folderType', adminFileVisibility.value);
-    const res = await api.postForm(`/api/admin/user-orders/${route.params.id}/files`, formData);
+    const uploadedFiles = await uploadFilesDirectly({
+      uploads: files.map((file) => ({
+        file,
+        category: 'photos_documents',
+        visibility: adminFileVisibility.value,
+      })),
+      signPath: '/api/cases/uploads/sign',
+      folderKey: String(route.params.id),
+      ownerId: route.params.id,
+      fileNameFor: (item) => item.file.name,
+    });
+    const res = await api.post(`/api/admin/user-orders/${route.params.id}/files/finalize`, {
+      folderType: adminFileVisibility.value,
+      files: uploadedFiles,
+    });
     order.value = res.data || order.value;
   } catch (err) { error.value = err.message || 'Upload failed.'; }
   finally { uploadingFiles.value = false; }

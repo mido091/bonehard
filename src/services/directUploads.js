@@ -79,6 +79,8 @@ export async function uploadFilesDirectly({
       mimeType: item.file?.type || signed.mimeType || 'application/octet-stream',
       fileSize: item.file?.size || signed.fileSize || 0,
       uploadCategory: item.category || 'photos_documents',
+      uploadCategoryOtherLabel: item.uploadCategoryOtherLabel || '',
+      visibility: item.visibility || '',
     });
   }
 

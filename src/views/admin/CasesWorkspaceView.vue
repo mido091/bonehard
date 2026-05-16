@@ -57,16 +57,23 @@ const generalFileInput = ref(null);
 const showFileModal = ref(false);
 const showNoteModal = ref(false);
 const editingNote = ref(null);
+const activeLightbox = ref(null);
 const savingLibraryItem = ref(false);
 const copiedFileId = ref(null);
 const renamingFileId = ref(null);
 const renameFileValue = ref('');
+const modalFileInput = ref(null);
+
+// Note attachment state
+const noteAttachFileInput = ref(null);  // hidden <input type="file">
+const attachingNoteId = ref(null);      // ID of the note currently being uploaded to
 const generalNoteForm = reactive({
   title: '',
   content: '',
   visibility: 'private',
   noteType: 'General',
   referenceLinks: [],
+  files: [],
 });
 
 // Bulk actions state
@@ -343,6 +350,7 @@ function resetNoteForm() {
   generalNoteForm.visibility = 'private';
   generalNoteForm.noteType = 'General';
   generalNoteForm.referenceLinks = [];
+  generalNoteForm.files = [];
 }
 
 function openNoteModal(note = null) {
@@ -353,6 +361,7 @@ function openNoteModal(note = null) {
     generalNoteForm.visibility = note.visibility === 'public' ? 'public' : 'private';
     generalNoteForm.noteType = note.noteType || 'General';
     generalNoteForm.referenceLinks = normalizeReferenceLinks(note.links);
+    generalNoteForm.files = note.attachments ? [...note.attachments] : [];
   } else {
     resetNoteForm();
   }
@@ -364,9 +373,97 @@ function closeNoteModal() {
   resetNoteForm();
 }
 
+function chooseNoteModalFiles() {
+  modalFileInput.value?.click();
+}
+
+function handleNoteModalFileSelect(event) {
+  const selectedFiles = Array.from(event.target.files || []);
+  if (selectedFiles.length) {
+    const existingKeys = new Set(
+      generalNoteForm.files.map((file) => [
+        file.id || '',
+        file.name || file.fileName || '',
+        file.size || file.fileSize || 0,
+        file.lastModified || '',
+      ].join(':')),
+    );
+    const uniqueFiles = selectedFiles.filter((file) => {
+      const key = ['', file.name || '', file.size || 0, file.lastModified || ''].join(':');
+      return !existingKeys.has(key);
+    });
+    generalNoteForm.files = [...generalNoteForm.files, ...uniqueFiles];
+  }
+  event.target.value = '';
+}
+
+const showCopyToast = ref(false);
+
+async function removeNoteModalFile(index) {
+  const file = generalNoteForm.files[index];
+  let deletedPersistedAttachment = false;
+  if (file.id) {
+    const confirmed = await showConfirm('Are you sure you want to remove this attachment permanently?');
+    if (!confirmed) return;
+    try {
+      const caseId = editingNote.value?.caseId;
+      const noteId = editingNote.value?.id;
+      const endpoint = caseId
+        ? `/api/cases/${caseId}/general-notes/${noteId}/attachments/${file.id}`
+        : `/api/cases/notes/general/${noteId}/attachments/${file.id}`;
+      await api.delete(endpoint);
+      deletedPersistedAttachment = true;
+    } catch (err) {
+      showAlert(err.message || 'Failed to remove attachment');
+      return;
+    }
+  }
+  generalNoteForm.files.splice(index, 1);
+  if (deletedPersistedAttachment) {
+    await loadRows();
+  }
+}
+
+function isPersistedNoteAttachment(file) {
+  return Boolean(file && typeof file === 'object' && 'id' in file);
+}
+
+function noteModalFileName(file) {
+  return file?.name || file?.fileName || 'Attachment';
+}
+
+function noteModalFileExtension(file) {
+  const name = noteModalFileName(file);
+  const extension = name.includes('.') ? name.split('.').pop() : '';
+  return (extension || 'FILE').toUpperCase().slice(0, 4);
+}
+
+function noteModalFileSize(file) {
+  return formatFileSize(file?.size || file?.fileSize || 0);
+}
+
+function noteModalFileUrl(file) {
+  if (!isPersistedNoteAttachment(file) || !editingNote.value) return '';
+  return noteAttachmentUrl(editingNote.value, file.id);
+}
+
+function isModalImageAttachment(file) {
+  if (file?.type?.startsWith('image/')) return true;
+  if (file?.mimeType?.startsWith('image/')) return true;
+  const extension = noteModalFileName(file).split('.').pop()?.toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '');
+}
+
 function fileDownloadUrl(row) {
   if (row.sourceType === 'general') return `${API_BASE_URL}/api/cases/files/general/${row.id}/download`;
   return `${API_BASE_URL}/api/cases/files/${row.id}/download`;
+}
+
+function noteAttachmentUrl(noteRow, fileId) {
+  if (!noteRow.caseId || noteRow.sourceType === 'general') {
+    return `${API_BASE_URL}/api/cases/notes/general/${noteRow.id}/attachments/${fileId}/download`;
+  }
+  return `${API_BASE_URL}/api/cases/${noteRow.caseId}/general-notes/${noteRow.id}/attachments/${fileId}/download`;
 }
 
 function fileRenameEndpoint(row) {
@@ -531,8 +628,30 @@ async function saveGeneralLibraryNote() {
       referenceLinks: cleanReferenceLinks(generalNoteForm.referenceLinks),
     };
 
-    if (editingNote.value) await api.patch(noteEndpoint(editingNote.value), payload);
-    else await api.post('/api/cases/notes/general', payload);
+    let createdNoteData = null;
+    if (editingNote.value) {
+      createdNoteData = editingNote.value;
+      await api.patch(noteEndpoint(editingNote.value), payload);
+    } else {
+      const res = await api.post('/api/cases/notes/general', payload);
+      createdNoteData = res.data;
+    }
+
+    // Upload files if any were selected
+    const newFiles = generalNoteForm.files.filter(f => f instanceof File);
+    if (newFiles.length > 0) {
+      const caseId = createdNoteData?.caseId || editingNote.value?.caseId;
+      const noteId = createdNoteData?.id || editingNote.value?.id;
+      
+      if (noteId) {
+        const formData = new FormData();
+        newFiles.forEach(f => formData.append('files', f));
+        const endpoint = caseId
+          ? `/api/cases/${caseId}/general-notes/${noteId}/attachments`
+          : `/api/cases/notes/general/${noteId}/attachments`;
+        await api.upload(endpoint, formData);
+      }
+    }
 
     closeNoteModal();
     await loadRows();
@@ -550,9 +669,42 @@ async function copyFileLink(row) {
     window.setTimeout(() => {
       if (copiedFileId.value === libraryItemKey(row)) copiedFileId.value = null;
     }, 1800);
-  } catch {
-    await showAlert('Could not copy the file link.');
+  } catch (err) {
+    console.error('Failed to copy', err);
   }
+}
+
+function openLightbox(file, row) {
+  activeLightbox.value = {
+    url: noteAttachmentUrl(row, file.id),
+    name: file.fileName || file.name || 'Image'
+  };
+}
+
+function closeLightbox() {
+  activeLightbox.value = null;
+}
+
+async function copyLightboxLink() {
+  if (!activeLightbox.value) return;
+  try {
+    await navigator.clipboard.writeText(activeLightbox.value.url);
+    showCopyToast.value = true;
+    setTimeout(() => { showCopyToast.value = false; }, 2000);
+  } catch(e) {
+    showAlert('Failed to copy link');
+  }
+}
+
+function downloadLightboxImage() {
+  if (!activeLightbox.value) return;
+  const a = document.createElement('a');
+  a.href = activeLightbox.value.url;
+  a.download = activeLightbox.value.name;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 async function saveFileRename(row) {
@@ -612,6 +764,70 @@ function formatDuration(seconds = 0) {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   return [h, m, sec].map(n => String(n).padStart(2, '0')).join(':');
+}
+
+/** Whether a file attachment is an image by MIME type or extension. */
+function isImage(file) {
+  if (file.mimeType && file.mimeType.startsWith('image/')) return true;
+  const ext = (file.fileName || '').split('.').pop().toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+}
+
+/** Open the hidden file picker for a specific note. */
+function chooseNoteAttachment(noteId) {
+  attachingNoteId.value = noteId;
+  noteAttachFileInput.value?.click();
+}
+
+/** Called when user selects files for a note attachment. */
+async function onNoteAttachmentSelected(event) {
+  const noteId = attachingNoteId.value;
+  const noteRow = rows.value.find(r => r.id === noteId);
+  const caseId = noteRow?.caseId;
+  if (!noteId || !event.target.files?.length) return;
+
+  const files = Array.from(event.target.files);
+  event.target.value = ''; // reset input
+
+  savingLibraryItem.value = true;
+  try {
+    const formData = new FormData();
+    files.forEach(f => formData.append('files', f));
+
+    const endpoint = caseId
+      ? `/api/cases/${caseId}/general-notes/${noteId}/attachments`
+      : `/api/cases/notes/general/${noteId}/attachments`;
+    const res = await api.upload(endpoint, formData);
+
+    const attachments = res.data;
+    if (noteRow && attachments) {
+      noteRow.attachments = attachments;
+    }
+  } catch (err) {
+    await showAlert(err.message || 'Failed to upload attachments.');
+  } finally {
+    savingLibraryItem.value = false;
+    attachingNoteId.value = null;
+  }
+}
+
+/** Delete a single note attachment. */
+async function deleteNoteAttachment(row, file) {
+  const caseId = row.caseId;
+  const confirmed = await showConfirm(`Delete attachment "${file.fileName}"?`);
+  if (!confirmed) return;
+  savingLibraryItem.value = true;
+  try {
+    const endpoint = caseId
+      ? `/api/cases/${caseId}/general-notes/${row.id}/attachments/${file.id}`
+      : `/api/cases/notes/general/${row.id}/attachments/${file.id}`;
+    await api.delete(endpoint);
+    await loadRows();
+  } catch (err) {
+    await showAlert(err.message || 'Failed to delete attachment.');
+  } finally {
+    savingLibraryItem.value = false;
+  }
 }
 
 onMounted(loadRows);
@@ -819,6 +1035,16 @@ onMounted(loadRows);
       </div>
 
       <div v-else-if="config.type === 'notes'" class="files-library-groups">
+        <!-- Hidden file input shared for all note attach actions -->
+        <input
+          ref="noteAttachFileInput"
+          type="file"
+          multiple
+          :accept="CASE_UPLOAD_ACCEPT"
+          class="files-native-input"
+          @change="onNoteAttachmentSelected"
+        />
+
         <article v-for="group in groupedNoteRows" :key="group.key" class="files-library-group">
           <header class="files-library-group__header">
             <div>
@@ -838,7 +1064,43 @@ onMounted(loadRows);
                 <small class="files-detail-line">{{ row.noteType || 'General' }} - {{ formatDate(row.updatedAt || row.createdAt) }}</small>
                 <small class="files-detail-line">Created by {{ row.createdByName || 'Unknown' }}</small>
                 <span v-if="row.content" class="notes-card__preview" v-html="row.content"></span>
+
+                <!-- ── File/Image Attachments ──────────────────────────── -->
+                <div v-if="row.attachments?.length" class="note-attachments">
+                  <div class="note-attachments__grid">
+                    <template v-for="file in row.attachments" :key="file.id">
+                      <!-- Image thumbnail -->
+                      <button
+                        v-if="isImage(file)"
+                        type="button"
+                        class="note-attach-img-wrap"
+                        :title="file.fileName"
+                        @click="openLightbox(file, row)"
+                      >
+                        <img
+                          :src="noteAttachmentUrl(row, file.id)"
+                          :alt="file.fileName"
+                          class="note-attach-img"
+                          loading="lazy"
+                        />
+                      </button>
+
+                      <!-- File chip -->
+                      <div v-else class="note-attach-file">
+                        <span class="note-attach-file__ext">{{ (file.fileName || '').split('.').pop().toUpperCase().slice(0, 4) }}</span>
+                        <a
+                          :href="noteAttachmentUrl(row, file.id)"
+                          target="_blank"
+                          rel="noopener"
+                          class="note-attach-file__name"
+                          :title="file.fileName"
+                        >{{ file.fileName }}</a>
+                      </div>
+                    </template>
+                  </div>
+                </div>
               </span>
+
               <span class="files-file-card__meta">
                 <span class="files-chip" :class="`files-chip--${row.visibility || 'private'}`">{{ row.visibility || 'private' }}</span>
                 <span class="files-actions">
@@ -846,6 +1108,7 @@ onMounted(loadRows);
                   <button v-if="row.canManage !== false" class="files-open files-open--danger" type="button" @click="deleteNote(row)">Delete</button>
                 </span>
               </span>
+
               <div v-if="row.links?.length" class="reference-links reference-links--card">
                 <a v-for="link in row.links" :key="link.id || link.url" :href="link.url" target="_blank" rel="noopener">
                   {{ link.label || link.url }}
@@ -1045,7 +1308,9 @@ onMounted(loadRows);
                   <strong>{{ file.name }}</strong>
                   <small>{{ formatFileSize(file.size) }}</small>
                 </span>
-                <button class="file-upload-list__remove" type="button" @click="generalFiles = generalFiles.filter((_, idx) => idx !== i)">✕</button>
+                <button class="file-upload-list__remove" type="button" title="Remove file" @click="generalFiles = generalFiles.filter((_, idx) => idx !== i)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
               </div>
             </div>
 
@@ -1101,6 +1366,88 @@ onMounted(loadRows);
               <span>Note</span>
               <RichTextEditor v-model="generalNoteForm.content" />
             </label>
+
+            <!-- File Upload Section inside Add Note Modal -->
+            <section class="admin-field admin-field--wide">
+              <div class="reference-link-editor__header">
+                <span>Attachments (Images & Files)</span>
+                <button class="admin-link-button" type="button" @click="chooseNoteModalFiles">+ Add files</button>
+              </div>
+              <input
+                ref="modalFileInput"
+                type="file"
+                multiple
+                :accept="CASE_UPLOAD_ACCEPT"
+                class="files-native-input"
+                style="display:none;"
+                @change="handleNoteModalFileSelect"
+              />
+              <div v-if="generalNoteForm.files.length" class="note-modal-attachments">
+                <div v-if="false" v-for="(file, i) in generalNoteForm.files" :key="i" class="file-upload-list__row">
+                  <span class="file-upload-list__icon">{{ (file.name || file.fileName || '').split('.').pop().toUpperCase().slice(0, 3) }}</span>
+                  <span class="file-upload-list__info">
+                    <strong>{{ file.name || file.fileName }}</strong>
+                    <small>{{ formatFileSize(file.size || file.fileSize) }}</small>
+                  </span>
+                  <button class="file-upload-list__remove" type="button" title="Remove attachment" @click.prevent="removeNoteModalFile(i)">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  </button>
+                </div>
+              </div>
+              <div v-if="generalNoteForm.files.length" class="note-modal-attachments note-modal-attachments--enhanced">
+                <article
+                  v-for="(file, i) in generalNoteForm.files"
+                  :key="file.id || `${noteModalFileName(file)}-${i}`"
+                  class="note-modal-attachment-card"
+                >
+                  <button
+                    v-if="isModalImageAttachment(file) && isPersistedNoteAttachment(file)"
+                    type="button"
+                    class="note-modal-attachment-card__thumb"
+                    :title="noteModalFileName(file)"
+                    @click="openLightbox(file, editingNote)"
+                  >
+                    <img :src="noteModalFileUrl(file)" :alt="noteModalFileName(file)" loading="lazy" />
+                  </button>
+                  <div v-else class="note-modal-attachment-card__thumb note-modal-attachment-card__thumb--file">
+                    {{ noteModalFileExtension(file) }}
+                  </div>
+
+                  <div class="note-modal-attachment-card__content">
+                    <strong :title="noteModalFileName(file)">{{ noteModalFileName(file) }}</strong>
+                    <small>{{ noteModalFileSize(file) }}</small>
+                    <span class="note-modal-attachment-card__status">
+                      {{ isPersistedNoteAttachment(file) ? 'Saved attachment' : 'Will upload with this note' }}
+                    </span>
+                  </div>
+
+                  <div class="note-modal-attachment-card__actions">
+                    <a
+                      v-if="isPersistedNoteAttachment(file)"
+                      :href="noteModalFileUrl(file)"
+                      target="_blank"
+                      rel="noopener"
+                      class="files-action-icon"
+                      title="Download attachment"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3v12" />
+                        <path d="M7 10.5 12 15l5-4.5" />
+                        <path d="M5 20h14" />
+                      </svg>
+                    </a>
+                    <button class="file-upload-list__remove" type="button" title="Remove attachment" @click.prevent="removeNoteModalFile(i)">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <p v-else class="admin-muted">Upload any relevant images or documents for this note.</p>
+            </section>
+
             <section class="admin-field admin-field--wide reference-link-editor">
               <div class="reference-link-editor__header">
                 <span>Reference Links</span>
@@ -1108,7 +1455,9 @@ onMounted(loadRows);
               </div>
               <div v-for="(link, index) in generalNoteForm.referenceLinks" :key="index" class="reference-link-row">
                 <input v-model.trim="link.url" type="url" maxlength="1000" placeholder="https://example.com" />
-                <button class="files-mini-action" type="button" @click="removeNoteLink(index)">Remove</button>
+                <button class="files-mini-action files-mini-action--remove" type="button" title="Remove link" @click="removeNoteLink(index)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
               </div>
               <p v-if="!generalNoteForm.referenceLinks.length" class="admin-muted">Add links that should appear under this note.</p>
             </section>
@@ -1170,6 +1519,26 @@ onMounted(loadRows);
         </div>
       </div>
     </Teleport>
+
+    <!-- Note Image Lightbox -->
+    <Teleport to="body">
+      <div v-if="activeLightbox" class="note-lightbox" @click.self="closeLightbox">
+        <div class="note-lightbox__toast" :class="{'note-lightbox__toast--show': showCopyToast}">Copied!</div>
+        <button class="note-lightbox__action note-lightbox__action--close" @click="closeLightbox" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <div class="note-lightbox__toolbar">
+          <button class="note-lightbox__action" @click="copyLightboxLink" title="Copy Link">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </button>
+          <button class="note-lightbox__action" @click="downloadLightboxImage" title="Download Image">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+        </div>
+        <img :src="activeLightbox.url" :alt="activeLightbox.name" class="note-lightbox__img" />
+      </div>
+    </Teleport>
+
   </section>
 </template>
 
@@ -1650,6 +2019,24 @@ onMounted(loadRows);
   color: #111827;
 }
 
+.files-mini-action--remove {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 2.8rem;
+  height: 2.8rem;
+  flex-shrink: 0;
+}
+
+.files-mini-action--remove:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
 .notes-card__preview {
   display: -webkit-box;
   margin-top: 0.55rem;
@@ -1865,6 +2252,68 @@ onMounted(loadRows);
   color: #57534e;
 }
 
+/* ── File Upload List (Modal) ──────────────────────────────────────────────── */
+.file-upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-upload-list__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(var(--rgb-foreground), 0.04);
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  border-radius: 8px;
+}
+
+.file-upload-list__icon {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(var(--rgb-accent), 0.85);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+}
+
+.file-upload-list__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-upload-list__info strong {
+  font-size: 0.85rem;
+  color: var(--color-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-upload-list__info small {
+  font-size: 0.7rem;
+  color: rgba(var(--rgb-foreground), 0.6);
+}
+
+.file-upload-list__remove {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.file-upload-list__remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
 @media (max-width: 1180px) {
   .files-stat-grid,
   .files-card-grid {
@@ -1973,4 +2422,288 @@ onMounted(loadRows);
 .modal__header h3 { margin: 0; }
 .cal-day { cursor: pointer; transition: background 0.2s; }
 .cal-day:hover { background: rgba(124, 106, 247, 0.08); }
+
+/* Note Attachments Styling */
+.note-attachments {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(var(--rgb-foreground), 0.06);
+}
+
+.note-attachments__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.note-modal-attachments--enhanced {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.note-modal-attachment-card {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  border-radius: 14px;
+  background: rgba(var(--rgb-foreground), 0.03);
+}
+
+.note-modal-attachment-card__thumb {
+  width: 3.5rem;
+  height: 3.5rem;
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(var(--rgb-foreground), 0.06);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.note-modal-attachment-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.note-modal-attachment-card__thumb--file {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--color-primary, #c96f16);
+}
+
+.note-modal-attachment-card__content {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.note-modal-attachment-card__content strong,
+.note-modal-attachment-card__content small,
+.note-modal-attachment-card__status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-modal-attachment-card__status {
+  font-size: 0.72rem;
+  color: rgba(var(--rgb-foreground), 0.58);
+}
+
+.note-modal-attachment-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.note-attach-img-wrap {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--rgb-foreground), 0.1);
+  background: rgba(var(--rgb-foreground), 0.03);
+  display: block;
+}
+
+.note-attach-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s;
+}
+
+.note-attach-img-wrap:hover .note-attach-img {
+  transform: scale(1.1);
+}
+
+.note-attach-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  display: grid;
+  place-items: center;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+}
+
+.note-attach-img-wrap:hover .note-attach-remove {
+  opacity: 1;
+}
+
+.note-attach-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(var(--rgb-foreground), 0.04);
+  border: 1px solid rgba(var(--rgb-foreground), 0.08);
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.note-attach-file__ext {
+  font-weight: 800;
+  font-size: 0.6rem;
+  color: var(--color-accent);
+  background: rgba(var(--rgb-accent), 0.1);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.note-attach-file__name {
+  color: var(--color-text-main);
+  text-decoration: none;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-attach-file__name:hover {
+  text-decoration: underline;
+}
+
+.note-attach-remove--file {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0.1rem;
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+}
+
+.note-attach-remove--file:hover {
+  opacity: 1;
+}
+
+/* ── Note Lightbox ──────────────────────────────────────────────────────────── */
+.note-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 2rem;
+}
+
+.note-lightbox__img {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: 12px;
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7);
+  object-fit: contain;
+  cursor: default;
+}
+
+.note-lightbox__action {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.note-lightbox__action:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.note-lightbox__action--close {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 100000;
+}
+
+.note-lightbox__toolbar {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100000;
+}
+
+.note-lightbox__toast {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 100px;
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 100001;
+}
+
+.note-lightbox__toast--show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+@media (max-width: 640px) {
+  .note-modal-attachment-card {
+    grid-template-columns: 3rem minmax(0, 1fr);
+  }
+
+  .note-modal-attachment-card__thumb {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .note-modal-attachment-card__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .note-lightbox {
+    padding: 1rem;
+  }
+}
 </style>

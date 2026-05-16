@@ -109,6 +109,103 @@ function clearRememberedClientTalk(sessionId = null) {
   localStorage.removeItem(activeTalkStorageKey.value);
 }
 
+function clientTalkRecordRoute(data = {}, session = null) {
+  const orderId = session?.orderId || data?.orderId;
+  if (!orderId) return null;
+
+  const role = authState.user?.role;
+  if (role === 'admin' || role === 'assistant') {
+    const entryContext = session?.entryContext || data?.entryContext || 'admin-order';
+    return entryContext === 'admin-case'
+      ? `/admin/cases/${orderId}`
+      : `/admin/user-orders/${orderId}`;
+  }
+
+  return `/dashboard/orders/${orderId}`;
+}
+
+function openClientTalkRequest(data, item, session = null) {
+  activeClientTalkReq.value = {
+    sessionId: session?.id || data.sessionId,
+    orderId: session?.orderId || data.orderId,
+    orderName: session?.orderName || data.orderName || '',
+    userName: session?.userName || data.userName || 'Client',
+    requestedAt: session?.requestedAt || item.createdAt,
+    sessionStatus: session?.status || data.sessionStatus,
+    assignedTo: session?.assignedTo || data.assignedTo,
+  };
+  open.value = false;
+}
+
+function openClientTalkSession(session, { unread = false, notificationId = null } = {}) {
+  activeClientTalkSession.value = session;
+  activeClientTalkUnread.value = unread;
+  activeClientTalkNotificationId.value = notificationId;
+  open.value = false;
+}
+
+async function handleClientTalkNotification(item, data) {
+  try {
+    const response = await api.get(`/api/client-talk/sessions/${data.sessionId}`);
+    const session = response.data;
+    const role = authState.user?.role;
+
+    if (session?.status === 'ended') {
+      const target = clientTalkRecordRoute(data, session);
+      if (target) router.push(target);
+      open.value = false;
+      return true;
+    }
+
+    const isStaff = role === 'admin' || role === 'assistant';
+
+    if (isStaff && !session?.assignedTo) {
+      openClientTalkRequest(data, item, session);
+      return true;
+    }
+
+    if (item.type === 'client_talk' && isStaff) {
+      const target = clientTalkRecordRoute(data, session);
+      if (target) router.push(target);
+      open.value = false;
+      return true;
+    }
+
+    if (session?.status === 'active') {
+      openClientTalkSession(session, {
+        unread: item.type === 'client_talk_message',
+        notificationId: item.type === 'client_talk_message' ? item.id : null,
+      });
+      return true;
+    }
+
+    if (session?.status === 'pending') {
+      if (isStaff) {
+        openClientTalkRequest(data, item, session);
+      } else {
+        const target = clientTalkRecordRoute(data, session);
+        if (target) router.push(target);
+        open.value = false;
+      }
+      return true;
+    }
+
+    const target = clientTalkRecordRoute(data, session);
+    if (target) router.push(target);
+    open.value = false;
+    return true;
+  } catch (err) {
+    const target = clientTalkRecordRoute(data);
+    if (target) {
+      router.push(target);
+      open.value = false;
+      return true;
+    }
+    error.value = err.message || 'Failed to open Client Talk';
+    return false;
+  }
+}
+
 async function restoreActiveClientTalkShortcut() {
   if (!activeTalkStorageKey.value || !['admin', 'assistant'].includes(authState.user?.role)) return;
 
@@ -214,40 +311,12 @@ async function markRead(item) {
     }
   }
 
-  // Handle navigation based on notification type
   const data = item.dataJson;
 
-  // Client Talk notification — open claim modal for admin/assistant
-  if (item.type === 'client_talk' && data?.sessionId) {
-    const role = authState.user?.role;
-    if (role === 'admin' || role === 'assistant') {
-      activeClientTalkReq.value = {
-        sessionId:   data.sessionId,
-        orderId:     data.orderId,
-        orderName:   data.orderName || '',
-        userName:    data.userName || 'Client',
-        requestedAt: item.createdAt,
-        sessionStatus: data.sessionStatus,
-        assignedTo:  data.assignedTo,
-      };
-      open.value = false;
-      return;
-    }
+  if (data?.sessionId) {
+    const handled = await handleClientTalkNotification(item, data);
+    if (handled) return;
   }
-
-  if (item.type === 'client_talk_message' && data?.sessionId) {
-    try {
-      const response = await api.get(`/api/client-talk/sessions/${data.sessionId}`);
-      activeClientTalkSession.value = response.data;
-      activeClientTalkUnread.value = true;
-      activeClientTalkNotificationId.value = null;
-      open.value = false;
-      return;
-    } catch (err) {
-      error.value = err.message || 'Failed to open Client Talk';
-    }
-  }
-
   if (data?.orderId) {
     const prefix = authState.user?.role === 'admin' || authState.user?.role === 'assistant' ? '/admin/user-orders' : '/dashboard/orders';
     router.push(`${prefix}/${data.orderId}`);

@@ -1,13 +1,15 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { useTheme } from '../../composables/useTheme';
 import { api } from '../../services/api';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const { showConfirm } = useConfirmDialog();
+const { theme } = useTheme();
 
 const orders = ref([]);
 const meta = ref({ total: 0, page: 1, perPage: 20 });
@@ -17,6 +19,8 @@ const actionLoading = ref('');
 const statuses = ref([]);
 const filters = ref({ statusIds: [] });
 const statusMenuId = ref(null);
+const statusMenuAnchor = ref(null);
+const statusMenuStyle = ref({});
 const statusUpdatingId = ref(null);
 const clientTalkOrder = ref(null);
 const clientTalkSession = ref(null);
@@ -78,13 +82,65 @@ async function deleteOrder(order) {
   }
 }
 
-function toggleStatusMenu(id) {
-  statusMenuId.value = statusMenuId.value === id ? null : id;
+function getStatusMenuOrder() {
+  return orders.value.find((order) => Number(order.id) === Number(statusMenuId.value)) || null;
+}
+
+function closeStatusMenu() {
+  statusMenuId.value = null;
+  statusMenuAnchor.value = null;
+}
+
+function updateStatusMenuPosition() {
+  if (!statusMenuAnchor.value || !statusMenuId.value) return;
+
+  const rect = statusMenuAnchor.value.getBoundingClientRect();
+  const width = Math.min(352, Math.max(244, window.innerWidth - 24));
+  const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+  const availableBelow = window.innerHeight - rect.bottom - 12;
+  const menuMaxHeight = Math.min(328, Math.max(220, window.innerHeight - 32));
+  const openUpward = availableBelow < 220 && rect.top > availableBelow;
+  const top = openUpward
+    ? Math.max(12, rect.top - Math.min(menuMaxHeight, rect.top - 12) - 8)
+    : Math.min(window.innerHeight - 12, rect.bottom + 8);
+
+  statusMenuStyle.value = {
+    position: 'fixed',
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${width}px`,
+    maxHeight: `${openUpward ? Math.min(menuMaxHeight, rect.top - 20) : Math.min(menuMaxHeight, availableBelow)}px`,
+    zIndex: 100000,
+  };
+}
+
+async function toggleStatusMenu(id, event) {
+  const nextValue = statusMenuId.value === id ? null : id;
+  statusMenuId.value = nextValue;
+  statusMenuAnchor.value = nextValue ? event?.currentTarget || null : null;
+
+  if (nextValue) {
+    await nextTick();
+    updateStatusMenuPosition();
+  }
+}
+
+function closeFloatingMenus(event) {
+  if (!statusMenuId.value) return;
+
+  const clickedTrigger = statusMenuAnchor.value?.contains?.(event.target);
+  const clickedMenu = event.target.closest?.('.inline-status-menu--teleported');
+  if (!clickedTrigger && !clickedMenu) closeStatusMenu();
+}
+
+function syncFloatingMenus() {
+  if (statusMenuId.value) updateStatusMenuPosition();
 }
 
 async function changeOrderStatus(order, status) {
+  if (!order) return;
   if (Number(order.statusId) === Number(status.id) || statusUpdatingId.value) {
-    statusMenuId.value = null;
+    closeStatusMenu();
     return;
   }
   statusUpdatingId.value = order.id;
@@ -93,7 +149,7 @@ async function changeOrderStatus(order, status) {
     const response = await api.patch(`/api/admin/user-orders/${order.id}/status`, { statusId: status.id });
     const updated = response.data;
     orders.value = orders.value.map((item) => item.id === order.id ? { ...item, ...updated } : item);
-    statusMenuId.value = null;
+    closeStatusMenu();
   } catch (err) {
     error.value = err.message || 'Failed to update order status.';
   } finally {
@@ -118,9 +174,18 @@ async function openClientTalk(order) {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', closeFloatingMenus);
+  window.addEventListener('resize', syncFloatingMenus);
+  window.addEventListener('scroll', syncFloatingMenus, true);
   const statusResponse = await api.get('/api/case-statuses');
   statuses.value = statusResponse.data || [];
   await loadOrders(1);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeFloatingMenus);
+  window.removeEventListener('resize', syncFloatingMenus);
+  window.removeEventListener('scroll', syncFloatingMenus, true);
 });
 </script>
 
@@ -180,22 +245,9 @@ onMounted(async () => {
                 </td>
                 <td data-label="Status">
                   <div class="inline-status-control">
-                    <button class="case-status case-status--button" type="button" :style="{ '--status-color': order.statusColor }" @click="toggleStatusMenu(order.id)">
+                    <button class="case-status case-status--button" type="button" :style="{ '--status-color': order.statusColor }" @click.stop="toggleStatusMenu(order.id, $event)">
                       {{ statusUpdatingId === order.id ? 'Saving...' : order.statusName || 'Order Received' }}
                     </button>
-                    <div v-if="statusMenuId === order.id" class="inline-status-menu">
-                      <button
-                        v-for="status in statuses"
-                        :key="status.id"
-                        class="inline-status-menu__item"
-                        :class="{ 'inline-status-menu__item--active': Number(status.id) === Number(order.statusId) }"
-                        type="button"
-                        @click="changeOrderStatus(order, status)"
-                      >
-                        <span class="inline-status-menu__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
-                        <span>{{ status.name }}</span>
-                      </button>
-                    </div>
                   </div>
                 </td>
                 <td data-label="Progress">
@@ -249,6 +301,32 @@ onMounted(async () => {
       @close="clientTalkOrder = null; clientTalkSession = null"
       @ended="clientTalkOrder = null; clientTalkSession = null"
     />
+
+    <Teleport to="body">
+      <Transition name="fade-down">
+        <div
+          v-if="getStatusMenuOrder()"
+          class="inline-status-menu inline-status-menu--teleported"
+          :class="{ 'inline-status-menu--light': theme === 'light' }"
+          :style="statusMenuStyle"
+        >
+          <button
+            v-for="status in statuses"
+            :key="status.id"
+            class="inline-status-menu__item"
+            :class="{
+              'inline-status-menu__item--active': Number(status.id) === Number(getStatusMenuOrder()?.statusId),
+              'inline-status-menu__item--light': theme === 'light'
+            }"
+            type="button"
+            @click="changeOrderStatus(getStatusMenuOrder(), status)"
+          >
+            <span class="inline-status-menu__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
+            <span>{{ status.name }}</span>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </section>
 </template>
 
@@ -360,20 +438,14 @@ onMounted(async () => {
   align-items: center;
 }
 
-.inline-status-control:has(.inline-status-menu) {
-  z-index: 700;
-}
-
 :deep(.case-status--button) {
   cursor: pointer;
   border-color: color-mix(in srgb, var(--status-color, #60a5fa) 48%, transparent);
 }
 
 .inline-status-menu {
-  position: absolute;
-  top: calc(100% + 0.45rem);
-  left: 0;
-  z-index: 1800;
+  position: fixed;
+  z-index: 100000;
   width: min(22rem, calc(100vw - 2rem));
   max-height: min(19rem, 52vh);
   overflow: auto;
@@ -382,6 +454,10 @@ onMounted(async () => {
   border-radius: 0.85rem;
   background: #070707;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.64), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.inline-status-menu--teleported {
+  isolation: isolate;
 }
 
 .inline-status-menu__item {
@@ -414,18 +490,10 @@ onMounted(async () => {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-color, #60a5fa) 18%, transparent);
 }
 
-.admin-table-wrap:has(.inline-status-menu) {
-  overflow: visible;
-}
-
-.admin-table tbody tr:has(.inline-status-menu) {
-  position: relative;
-  z-index: 220;
-}
-
 :global(body.light-mode) .inline-status-menu,
 :global(.light-mode) .inline-status-menu,
-:global([data-theme="light"]) .inline-status-menu {
+:global([data-theme="light"]) .inline-status-menu,
+.inline-status-menu--light {
   background: #ffffff;
   border-color: rgba(15, 23, 42, 0.12);
   box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18);
@@ -433,7 +501,8 @@ onMounted(async () => {
 
 :global(body.light-mode) .inline-status-menu__item,
 :global(.light-mode) .inline-status-menu__item,
-:global([data-theme="light"]) .inline-status-menu__item {
+:global([data-theme="light"]) .inline-status-menu__item,
+.inline-status-menu__item--light {
   color: #172033;
 }
 
@@ -442,7 +511,9 @@ onMounted(async () => {
 :global(.light-mode) .inline-status-menu__item:hover,
 :global(.light-mode) .inline-status-menu__item--active,
 :global([data-theme="light"]) .inline-status-menu__item:hover,
-:global([data-theme="light"]) .inline-status-menu__item--active {
+:global([data-theme="light"]) .inline-status-menu__item--active,
+.inline-status-menu__item--light:hover,
+.inline-status-menu__item--light.inline-status-menu__item--active {
   background: #f1f5f9;
   color: #0f172a;
 }

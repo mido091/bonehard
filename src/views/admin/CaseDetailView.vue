@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { API_BASE_URL, api } from '../../services/api';
 import RichTextEditor from '../../components/admin/RichTextEditor.vue';
@@ -8,12 +8,18 @@ import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
 import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import ClientTalkHistoryModal from '../../components/ClientTalkHistoryModal.vue';
+import ClientTalkTranscriptModal from '../../components/ClientTalkTranscriptModal.vue';
+import { useClientTalkHistory } from '../../composables/useClientTalkHistory';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
+import { useTheme } from '../../composables/useTheme';
+import { authState } from '../../stores/authStore';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
 
 const route = useRoute();
 const { showConfirm } = useConfirmDialog();
+const { theme } = useTheme();
 
 const item = ref(null);
 const users = ref([]);
@@ -31,9 +37,42 @@ const deletingFileId = ref(null);
 const deletingNoteId = ref(null);
 const statusListOpen = ref(false);
 const savingStatus = ref(false);
+const statusMenuAnchor = ref(null);
+const statusMenuStyle = ref({});
 const showClientTalk = ref(false);
 const clientTalkSession = ref(null);
 const openingClientTalk = ref(false);
+const recordId = computed(() => Number(route.params.id));
+const canDeleteClientTalk = computed(() => authState.user?.role === 'admin');
+const {
+  historyOpen,
+  historyLoading,
+  sessions: clientTalkSessions,
+  transcriptOpen,
+  transcriptLoading,
+  transcript,
+  deletingSessionId,
+  openHistory,
+  closeHistory,
+  loadTranscript,
+  closeTranscript,
+  deleteTranscript,
+} = useClientTalkHistory({
+  recordId,
+  historyPath: (id) => `/api/admin/cases/${id}/client-talk/sessions`,
+  transcriptPath: (id, sessionId) => `/api/admin/cases/${id}/client-talk/sessions/${sessionId}`,
+  canDelete: canDeleteClientTalk,
+});
+
+async function selectConversation(session) {
+  if (['pending', 'active'].includes(session?.status)) {
+    clientTalkSession.value = session;
+    showClientTalk.value = true;
+    closeHistory();
+    return;
+  }
+  await loadTranscript(session);
+}
 
 // Focus directive for renaming
 const vFocus = { mounted: (el) => el.focus() };
@@ -252,6 +291,7 @@ async function loadCaseDetails() {
 async function updateCaseStatus(status) {
   if (!item.value || savingStatus.value || Number(status.id) === Number(item.value.statusId)) {
     statusListOpen.value = false;
+    statusMenuAnchor.value = null;
     return;
   }
 
@@ -268,11 +308,56 @@ async function updateCaseStatus(status) {
       statusColor: response.data.statusColor ?? status.color,
     };
     statusListOpen.value = false;
+    statusMenuAnchor.value = null;
   } catch (err) {
     error.value = err.message || 'Failed to update case status.';
   } finally {
     savingStatus.value = false;
   }
+}
+
+function updateStatusMenuPosition() {
+  if (!statusMenuAnchor.value || !statusListOpen.value) return;
+
+  const rect = statusMenuAnchor.value.getBoundingClientRect();
+  const width = Math.min(480, Math.max(280, rect.width));
+  const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+  const availableHeight = Math.max(220, window.innerHeight - rect.bottom - 20);
+
+  statusMenuStyle.value = {
+    position: 'fixed',
+    top: `${Math.min(window.innerHeight - 16, rect.bottom + 8)}px`,
+    left: `${left}px`,
+    width: `${width}px`,
+    maxHeight: `${Math.min(420, availableHeight)}px`,
+    zIndex: 5200,
+  };
+}
+
+async function toggleStatusList(event) {
+  const nextValue = !statusListOpen.value;
+  statusListOpen.value = nextValue;
+  statusMenuAnchor.value = nextValue ? event?.currentTarget || null : null;
+
+  if (nextValue) {
+    await nextTick();
+    updateStatusMenuPosition();
+  }
+}
+
+function closeFloatingStatusMenu(event) {
+  if (!statusListOpen.value) return;
+
+  const clickedTrigger = statusMenuAnchor.value?.contains?.(event.target);
+  const clickedMenu = event.target.closest?.('.case-status-control__menu--teleported');
+  if (!clickedTrigger && !clickedMenu) {
+    statusListOpen.value = false;
+    statusMenuAnchor.value = null;
+  }
+}
+
+function syncFloatingStatusMenu() {
+  if (statusListOpen.value) updateStatusMenuPosition();
 }
 
 async function openClientTalk() {
@@ -314,6 +399,10 @@ async function saveTeamNote() {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', closeFloatingStatusMenu);
+  window.addEventListener('resize', syncFloatingStatusMenu);
+  window.addEventListener('scroll', syncFloatingStatusMenu, true);
+
   try {
     await loadCaseDetails();
   } catch (err) {
@@ -321,6 +410,12 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeFloatingStatusMenu);
+  window.removeEventListener('resize', syncFloatingStatusMenu);
+  window.removeEventListener('scroll', syncFloatingStatusMenu, true);
 });
 </script>
 
@@ -354,6 +449,10 @@ onMounted(async () => {
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
             {{ openingClientTalk ? 'Opening...' : 'Client Talk' }}
           </button>
+          <button class="premium-btn-secondary" type="button" @click="openHistory">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 10h8M8 14h5"/></svg>
+            View Conversations
+          </button>
           <button class="premium-btn-secondary" type="button" :disabled="exporting" @click="exportPackage">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             {{ exporting ? 'Preparing...' : 'Export as PDF' }}
@@ -382,27 +481,12 @@ onMounted(async () => {
             type="button"
             :aria-expanded="statusListOpen"
             :disabled="savingStatus"
-            @click="statusListOpen = !statusListOpen"
+            @click="toggleStatusList($event)"
           >
             <span class="case-status-control__dot" :style="{ '--status-color': currentStatus?.color || item.statusColor || '#60a5fa' }"></span>
             <strong>{{ savingStatus ? 'Saving...' : item.statusName || 'Order Received' }}</strong>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
           </button>
-          <div v-if="statusListOpen" class="case-status-control__menu">
-            <button
-              v-for="status in statuses"
-              :key="status.id"
-              class="case-status-control__item"
-              :class="{ 'case-status-control__item--active': Number(status.id) === Number(item.statusId) }"
-              type="button"
-              :disabled="savingStatus"
-              @click="updateCaseStatus(status)"
-            >
-              <span class="case-status-control__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
-              <span>{{ status.name }}</span>
-              <span v-if="Number(status.id) === Number(item.statusId)" class="case-status-control__selected">Current</span>
-            </button>
-          </div>
         </div>
         <div class="metric-card glass-panel">
           <span class="metric-label">Project Progress</span>
@@ -574,6 +658,54 @@ onMounted(async () => {
         @close="showClientTalk = false"
         @ended="showClientTalk = false"
       />
+      <ClientTalkHistoryModal
+        :visible="historyOpen"
+        :sessions="clientTalkSessions"
+        :loading="historyLoading"
+        :can-delete="canDeleteClientTalk"
+        :deleting-id="deletingSessionId"
+        title="Case Conversations"
+        @close="closeHistory"
+        @select="selectConversation"
+        @delete="deleteTranscript"
+      />
+      <ClientTalkTranscriptModal
+        :visible="transcriptOpen"
+        :session="transcript"
+        :loading="transcriptLoading"
+        :can-delete="canDeleteClientTalk"
+        :deleting="!!deletingSessionId"
+        @close="closeTranscript"
+        @delete="deleteTranscript"
+      />
+
+      <Teleport to="body">
+        <Transition name="fade-down">
+          <div
+            v-if="statusListOpen"
+            class="case-status-control__menu case-status-control__menu--teleported"
+            :class="{ 'case-status-control__menu--light': theme === 'light' }"
+            :style="statusMenuStyle"
+          >
+            <button
+              v-for="status in statuses"
+              :key="status.id"
+              class="case-status-control__item"
+              :class="{
+                'case-status-control__item--active': Number(status.id) === Number(item.statusId),
+                'case-status-control__item--light': theme === 'light'
+              }"
+              type="button"
+              :disabled="savingStatus"
+              @click="updateCaseStatus(status)"
+            >
+              <span class="case-status-control__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
+              <span>{{ status.name }}</span>
+              <span v-if="Number(status.id) === Number(item.statusId)" class="case-status-control__selected">Current</span>
+            </button>
+          </div>
+        </Transition>
+      </Teleport>
     </template>
   </section>
 </template>
@@ -789,6 +921,20 @@ onMounted(async () => {
   padding: 0.5rem;
 }
 
+.case-status-control__menu--teleported {
+  position: fixed;
+  top: auto;
+  left: auto;
+  width: min(30rem, calc(100vw - 1.5rem));
+  z-index: 5200 !important;
+}
+
+.case-status-control__menu--light {
+  background: rgba(255, 255, 255, 0.985) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+}
+
 .case-status-control__item {
   width: 100%;
   display: grid;
@@ -815,6 +961,16 @@ onMounted(async () => {
   cursor: wait;
 }
 
+.case-status-control__item--light {
+  color: #172033 !important;
+}
+
+.case-status-control__item--light:hover,
+.case-status-control__item--light.case-status-control__item--active {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
+}
+
 .case-status-control__dot {
   width: 0.78rem;
   height: 0.78rem;
@@ -830,18 +986,28 @@ onMounted(async () => {
   text-transform: uppercase;
 }
 
+.case-status-control__menu--light .case-status-control__selected {
+  color: #b45309 !important;
+}
+
 :global(body.light-mode) .case-status-control__menu,
 :global(.light-mode) .case-status-control__menu,
-:global([data-theme="light"]) .case-status-control__menu {
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18);
+:global([data-theme="light"]) .case-status-control__menu,
+:global(body.light-mode) .case-status-control__menu--teleported,
+:global(.light-mode) .case-status-control__menu--teleported,
+:global([data-theme="light"]) .case-status-control__menu--teleported {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
 }
 
 :global(body.light-mode) .case-status-control__item,
 :global(.light-mode) .case-status-control__item,
-:global([data-theme="light"]) .case-status-control__item {
-  color: #172033;
+:global([data-theme="light"]) .case-status-control__item,
+:global(body.light-mode) .case-status-control__menu--teleported .case-status-control__item,
+:global(.light-mode) .case-status-control__menu--teleported .case-status-control__item,
+:global([data-theme="light"]) .case-status-control__menu--teleported .case-status-control__item {
+  color: #172033 !important;
 }
 
 :global(body.light-mode) .case-status-control__item:hover,
@@ -849,9 +1015,24 @@ onMounted(async () => {
 :global(.light-mode) .case-status-control__item:hover,
 :global(.light-mode) .case-status-control__item--active,
 :global([data-theme="light"]) .case-status-control__item:hover,
-:global([data-theme="light"]) .case-status-control__item--active {
-  background: #f1f5f9;
-  color: #0f172a;
+:global([data-theme="light"]) .case-status-control__item--active,
+:global(body.light-mode) .case-status-control__menu--teleported .case-status-control__item:hover,
+:global(body.light-mode) .case-status-control__menu--teleported .case-status-control__item--active,
+:global(.light-mode) .case-status-control__menu--teleported .case-status-control__item:hover,
+:global(.light-mode) .case-status-control__menu--teleported .case-status-control__item--active,
+:global([data-theme="light"]) .case-status-control__menu--teleported .case-status-control__item:hover,
+:global([data-theme="light"]) .case-status-control__menu--teleported .case-status-control__item--active {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
+}
+
+:global(body.light-mode) .case-status-control__selected,
+:global(.light-mode) .case-status-control__selected,
+:global([data-theme="light"]) .case-status-control__selected,
+:global(body.light-mode) .case-status-control__menu--teleported .case-status-control__selected,
+:global(.light-mode) .case-status-control__menu--teleported .case-status-control__selected,
+:global([data-theme="light"]) .case-status-control__menu--teleported .case-status-control__selected {
+  color: #b45309 !important;
 }
 
 .progress-track {

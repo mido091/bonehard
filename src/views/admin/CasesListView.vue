@@ -1,14 +1,16 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import AdminSelect from '../../components/admin/AdminSelect.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import { useTheme } from '../../composables/useTheme';
 import { api } from '../../services/api';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 
 const { showConfirm } = useConfirmDialog();
 const router = useRouter();
+const { theme } = useTheme();
 
 const filters = reactive({
   search: '',
@@ -36,6 +38,8 @@ const actionMenuId = ref(null);
 const statusFilterOpen = ref(false);
 const statusMenuId = ref(null);
 const statusUpdatingId = ref(null);
+const statusMenuAnchor = ref(null);
+const statusMenuStyle = ref({});
 const clientTalkCase = ref(null);
 const clientTalkSession = ref(null);
 const openingClientTalkId = ref(null);
@@ -133,17 +137,69 @@ function toggleActionMenu(id) {
   actionMenuId.value = actionMenuId.value === id ? null : id;
   statusFilterOpen.value = false;
   statusMenuId.value = null;
+  statusMenuAnchor.value = null;
 }
 
-function toggleStatusMenu(id) {
+function getStatusMenuItem() {
+  return cases.value.find((item) => item.id === statusMenuId.value) || null;
+}
+
+function updateStatusMenuPosition() {
+  if (!statusMenuAnchor.value || !statusMenuId.value) return;
+
+  const rect = statusMenuAnchor.value.getBoundingClientRect();
+  const width = Math.min(352, Math.max(240, window.innerWidth - 24));
+  const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+
+  statusMenuStyle.value = {
+    position: 'fixed',
+    top: `${Math.min(window.innerHeight - 16, rect.bottom + 8)}px`,
+    left: `${left}px`,
+    width: `${width}px`,
+    zIndex: 5000,
+  };
+}
+
+async function toggleStatusMenu(id, event) {
+  const nextValue = statusMenuId.value === id ? null : id;
   statusMenuId.value = statusMenuId.value === id ? null : id;
   actionMenuId.value = null;
   statusFilterOpen.value = false;
+  statusMenuAnchor.value = nextValue ? event?.currentTarget || null : null;
+
+  if (nextValue) {
+    await nextTick();
+    updateStatusMenuPosition();
+  }
+}
+
+function closeFloatingMenus(event) {
+  if (statusMenuId.value) {
+    const clickedTrigger = statusMenuAnchor.value?.contains?.(event.target);
+    const clickedMenu = event.target.closest?.('.inline-status-menu--teleported');
+    if (!clickedTrigger && !clickedMenu) {
+      statusMenuId.value = null;
+      statusMenuAnchor.value = null;
+    }
+  }
+
+  if (actionMenuId.value && !event.target.closest?.('.case-options')) {
+    actionMenuId.value = null;
+  }
+
+  if (statusFilterOpen.value && !event.target.closest?.('.case-status-filter')) {
+    statusFilterOpen.value = false;
+  }
+}
+
+function syncFloatingMenus() {
+  if (statusMenuId.value) updateStatusMenuPosition();
 }
 
 async function changeCaseStatus(item, status) {
   if (Number(item.statusId) === Number(status.id) || statusUpdatingId.value) {
     statusMenuId.value = null;
+    statusMenuAnchor.value = null;
     return;
   }
   statusUpdatingId.value = item.id;
@@ -153,6 +209,7 @@ async function changeCaseStatus(item, status) {
     const updated = response.data;
     cases.value = cases.value.map((row) => row.id === item.id ? normalizeCase({ ...row, ...updated }) : row);
     statusMenuId.value = null;
+    statusMenuAnchor.value = null;
   } catch (err) {
     error.value = err.message || 'Failed to update case status.';
   } finally {
@@ -183,6 +240,10 @@ function openCaseDetails(id) {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', closeFloatingMenus);
+  window.addEventListener('resize', syncFloatingMenus);
+  window.addEventListener('scroll', syncFloatingMenus, true);
+
   const [statusResponse, userResponse, teamResponse] = await Promise.all([
     api.get('/api/case-statuses'),
     api.get('/api/admin/users/options'),
@@ -192,6 +253,12 @@ onMounted(async () => {
   users.value = userResponse.data;
   teams.value = teamResponse.data;
   await loadCases();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeFloatingMenus);
+  window.removeEventListener('resize', syncFloatingMenus);
+  window.removeEventListener('scroll', syncFloatingMenus, true);
 });
 </script>
 
@@ -215,7 +282,7 @@ onMounted(async () => {
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <div v-if="statusFilterOpen" class="case-status-filter__menu">
+            <div v-if="statusFilterOpen" class="case-status-filter__menu" :class="{ 'case-status-filter__menu--light': theme === 'light' }">
               <button
                 class="case-status-filter__option"
                 :class="{ 'case-status-filter__option--active': !filters.statusIds.length }"
@@ -318,6 +385,7 @@ onMounted(async () => {
           v-for="item in cases"
           :key="item.id"
           class="case-card case-card--interactive"
+          :class="{ 'case-card--menu-open': actionMenuId === item.id || statusMenuId === item.id }"
           role="link"
           tabindex="0"
           :aria-label="`Open details for ${item.name}`"
@@ -325,23 +393,10 @@ onMounted(async () => {
           @keydown.enter.prevent="openCaseDetails(item.id)"
           @keydown.space.prevent="openCaseDetails(item.id)"
         >
-          <div class="inline-status-control" @click.stop @keydown.stop>
-            <button class="case-status case-status--button" type="button" :style="{ '--status-color': item.statusColor }" @click="toggleStatusMenu(item.id)">
+          <div class="inline-status-control" :class="{ 'is-open': statusMenuId === item.id }" @click.stop @keydown.stop>
+            <button class="case-status case-status--button" type="button" :style="{ '--status-color': item.statusColor }" @click="toggleStatusMenu(item.id, $event)">
               {{ statusUpdatingId === item.id ? 'Saving...' : item.statusName }}
             </button>
-            <div v-if="statusMenuId === item.id" class="inline-status-menu">
-              <button
-                v-for="status in statuses"
-                :key="status.id"
-                class="inline-status-menu__item"
-                :class="{ 'inline-status-menu__item--active': Number(status.id) === Number(item.statusId) }"
-                type="button"
-                @click="changeCaseStatus(item, status)"
-              >
-                <span class="case-status-filter__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
-                <span>{{ status.name }}</span>
-              </button>
-            </div>
           </div>
           <h3 class="case-click-title">{{ item.name }}</h3>
           <p>{{ item.targetName || 'No target assigned' }}</p>
@@ -349,11 +404,11 @@ onMounted(async () => {
             <span :style="{ width: `${progressForCase(item)}%` }"></span>
           </div>
           <small class="case-progress__label">{{ progressForCase(item) }}% by status</small>
-          <div class="case-options" @click.stop @keydown.stop>
+          <div class="case-options" :class="{ 'is-open': actionMenuId === item.id }" @click.stop @keydown.stop>
             <button class="case-options__trigger" type="button" aria-label="Case options" @click="toggleActionMenu(item.id)">
               <span></span><span></span><span></span>
             </button>
-            <div v-if="actionMenuId === item.id" class="case-options__menu">
+            <div v-if="actionMenuId === item.id" class="case-options__menu" :class="{ 'case-options__menu--light': theme === 'light' }">
               <button class="case-options__item case-options__item--accent" type="button" :disabled="openingClientTalkId === item.id" @click="openClientTalk(item); actionMenuId = null">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                 <span>{{ openingClientTalkId === item.id ? 'Opening...' : 'Client Talk' }}</span>
@@ -382,6 +437,7 @@ onMounted(async () => {
               v-for="item in cases"
               :key="item.id"
               class="case-row case-row--interactive"
+              :class="{ 'case-row--menu-open': actionMenuId === item.id || statusMenuId === item.id }"
               role="link"
               tabindex="0"
               :aria-label="`Open details for ${item.name}`"
@@ -391,23 +447,10 @@ onMounted(async () => {
             >
               <td data-label="Name"><span class="case-row__name">{{ item.name }}</span></td>
               <td data-label="Status">
-                <div class="inline-status-control" @click.stop @keydown.stop>
-                  <button class="case-status case-status--button" type="button" :style="{ '--status-color': item.statusColor }" @click="toggleStatusMenu(item.id)">
+                <div class="inline-status-control" :class="{ 'is-open': statusMenuId === item.id }" @click.stop @keydown.stop>
+                  <button class="case-status case-status--button" type="button" :style="{ '--status-color': item.statusColor }" @click="toggleStatusMenu(item.id, $event)">
                     {{ statusUpdatingId === item.id ? 'Saving...' : item.statusName }}
                   </button>
-                  <div v-if="statusMenuId === item.id" class="inline-status-menu">
-                    <button
-                      v-for="status in statuses"
-                      :key="status.id"
-                      class="inline-status-menu__item"
-                      :class="{ 'inline-status-menu__item--active': Number(status.id) === Number(item.statusId) }"
-                      type="button"
-                      @click="changeCaseStatus(item, status)"
-                    >
-                      <span class="case-status-filter__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
-                      <span>{{ status.name }}</span>
-                    </button>
-                  </div>
                 </div>
               </td>
               <td data-label="Client">{{ item.targetName || '-' }}</td>
@@ -416,12 +459,12 @@ onMounted(async () => {
                 <div class="case-progress"><span :style="{ width: `${progressForCase(item)}%` }"></span></div>
                 <small class="case-progress__label">{{ progressForCase(item) }}% by status</small>
               </td>
-              <td data-label="Options">
-                <div class="case-options" @click.stop @keydown.stop>
+              <td data-label="Options" :class="{ 'case-cell--menu-open': actionMenuId === item.id }">
+                <div class="case-options" :class="{ 'is-open': actionMenuId === item.id }" @click.stop @keydown.stop>
                   <button class="case-options__trigger" type="button" aria-label="Case options" @click="toggleActionMenu(item.id)">
                     <span></span><span></span><span></span>
                   </button>
-                  <div v-if="actionMenuId === item.id" class="case-options__menu">
+                  <div v-if="actionMenuId === item.id" class="case-options__menu" :class="{ 'case-options__menu--light': theme === 'light' }">
                     <button class="case-options__item case-options__item--accent" type="button" :disabled="openingClientTalkId === item.id" @click="openClientTalk(item); actionMenuId = null">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                       <span>{{ openingClientTalkId === item.id ? 'Opening...' : 'Client Talk' }}</span>
@@ -451,6 +494,32 @@ onMounted(async () => {
       @close="clientTalkCase = null; clientTalkSession = null"
       @ended="clientTalkCase = null; clientTalkSession = null"
     />
+
+    <Teleport to="body">
+      <Transition name="fade-down">
+        <div
+          v-if="getStatusMenuItem()"
+          class="inline-status-menu inline-status-menu--teleported"
+          :class="{ 'inline-status-menu--light': theme === 'light' }"
+          :style="statusMenuStyle"
+        >
+          <button
+            v-for="status in statuses"
+            :key="status.id"
+            class="inline-status-menu__item"
+            :class="{
+              'inline-status-menu__item--active': Number(status.id) === Number(getStatusMenuItem()?.statusId),
+              'inline-status-menu__item--light': theme === 'light'
+            }"
+            type="button"
+            @click="changeCaseStatus(getStatusMenuItem(), status)"
+          >
+            <span class="case-status-filter__dot" :style="{ '--status-color': status.color || '#60a5fa' }"></span>
+            <span>{{ status.name }}</span>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </section>
 </template>
 
@@ -530,10 +599,28 @@ onMounted(async () => {
   padding: 0.5rem;
 }
 
+.case-status-filter__menu--light {
+  background: rgba(255, 255, 255, 0.985) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+:global(body.light-mode) .case-status-filter__menu,
+:global(.light-mode) .case-status-filter__menu,
+:global([data-theme="light"]) .case-status-filter__menu {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
 .inline-status-control {
   position: relative;
   display: inline-flex;
   align-items: center;
+}
+
+.inline-status-control.is-open {
+  z-index: 1700;
 }
 
 .inline-status-control:has(.inline-status-menu) {
@@ -560,6 +647,19 @@ onMounted(async () => {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.64), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.inline-status-menu--teleported {
+  position: fixed;
+  top: auto;
+  left: auto;
+  z-index: 5000 !important;
+}
+
+.inline-status-menu--light {
+  background: rgba(255, 255, 255, 0.985) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
 .inline-status-menu__item {
   width: 100%;
   display: grid;
@@ -580,6 +680,16 @@ onMounted(async () => {
 .inline-status-menu__item:hover,
 .inline-status-menu__item--active {
   background: rgba(var(--rgb-foreground), 0.08);
+}
+
+.inline-status-menu__item--light {
+  color: #172033 !important;
+}
+
+.inline-status-menu__item--light:hover,
+.inline-status-menu__item--light.inline-status-menu__item--active {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
 }
 
 .case-status-filter__option {
@@ -604,6 +714,32 @@ onMounted(async () => {
   background: rgba(var(--rgb-accent), 0.11);
 }
 
+.case-status-filter__menu--light .case-status-filter__option {
+  color: #172033 !important;
+}
+
+.case-status-filter__menu--light .case-status-filter__option:hover,
+.case-status-filter__menu--light .case-status-filter__option--active {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
+}
+
+:global(body.light-mode) .case-status-filter__option,
+:global(.light-mode) .case-status-filter__option,
+:global([data-theme="light"]) .case-status-filter__option {
+  color: #172033;
+}
+
+:global(body.light-mode) .case-status-filter__option:hover,
+:global(body.light-mode) .case-status-filter__option--active,
+:global(.light-mode) .case-status-filter__option:hover,
+:global(.light-mode) .case-status-filter__option--active,
+:global([data-theme="light"]) .case-status-filter__option:hover,
+:global([data-theme="light"]) .case-status-filter__option--active {
+  background: #f8efe1;
+  color: #0f172a;
+}
+
 .case-status-filter__dot {
   width: 0.75rem;
   height: 0.75rem;
@@ -622,6 +758,12 @@ onMounted(async () => {
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+:global(body.light-mode) .case-status-filter__check,
+:global(.light-mode) .case-status-filter__check,
+:global([data-theme="light"]) .case-status-filter__check {
+  color: #b45309;
 }
 
 :deep(.case-status) {
@@ -664,6 +806,13 @@ onMounted(async () => {
   outline-offset: 3px;
 }
 
+.case-card--menu-open,
+.case-row--menu-open {
+  position: relative;
+  z-index: 1800;
+  overflow: visible !important;
+}
+
 .case-click-title,
 .case-row__name {
   color: var(--color-text-strong);
@@ -693,6 +842,10 @@ onMounted(async () => {
   display: inline-flex;
   justify-content: flex-end;
   cursor: default;
+}
+
+.case-options.is-open {
+  z-index: 1800;
 }
 
 .case-options:has(.case-options__menu) {
@@ -738,6 +891,12 @@ onMounted(async () => {
   transform-origin: top right;
 }
 
+.case-options__menu--light {
+  background: rgba(255, 255, 255, 0.985) !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18) !important;
+}
+
 .case-options__item {
   width: 100%;
   display: flex;
@@ -772,12 +931,30 @@ onMounted(async () => {
   color: #ffffff;
 }
 
+.case-options__menu--light .case-options__item {
+  color: #172033 !important;
+}
+
+.case-options__menu--light .case-options__item:hover,
+.case-options__menu--light .case-options__item--active {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
+}
+
 .case-options__item--accent {
   color: #34d399;
 }
 
+.case-options__menu--light .case-options__item--accent {
+  color: #047857 !important;
+}
+
 .case-options__item--danger {
   color: #ffb4b4;
+}
+
+.case-options__menu--light .case-options__item--danger {
+  color: #b42318 !important;
 }
 
 .case-options__divider {
@@ -830,9 +1007,20 @@ onMounted(async () => {
 :global(body.light-mode) .inline-status-menu,
 :global(.light-mode) .inline-status-menu,
 :global([data-theme="light"]) .inline-status-menu {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.98);
   border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:global(body.light-mode .inline-status-menu),
+:global(.light-mode .inline-status-menu),
+:global([data-theme="light"] .inline-status-menu),
+:global(body.light-mode .inline-status-menu--teleported),
+:global(.light-mode .inline-status-menu--teleported),
+:global([data-theme="light"] .inline-status-menu--teleported) {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
 }
 
 :global(body.light-mode) .inline-status-menu__item,
@@ -841,14 +1029,30 @@ onMounted(async () => {
   color: #172033;
 }
 
+:global(body.light-mode .inline-status-menu__item),
+:global(.light-mode .inline-status-menu__item),
+:global([data-theme="light"] .inline-status-menu__item) {
+  color: #172033 !important;
+}
+
 :global(body.light-mode) .inline-status-menu__item:hover,
 :global(body.light-mode) .inline-status-menu__item--active,
 :global(.light-mode) .inline-status-menu__item:hover,
 :global(.light-mode) .inline-status-menu__item--active,
 :global([data-theme="light"]) .inline-status-menu__item:hover,
 :global([data-theme="light"]) .inline-status-menu__item--active {
-  background: #f1f5f9;
+  background: #f8efe1;
   color: #0f172a;
+}
+
+:global(body.light-mode .inline-status-menu__item:hover),
+:global(body.light-mode .inline-status-menu__item--active),
+:global(.light-mode .inline-status-menu__item:hover),
+:global(.light-mode .inline-status-menu__item--active),
+:global([data-theme="light"] .inline-status-menu__item:hover),
+:global([data-theme="light"] .inline-status-menu__item--active) {
+  background: #f8efe1 !important;
+  color: #0f172a !important;
 }
 
 :global(body.light-mode .case-options__menu),
@@ -1023,6 +1227,12 @@ onMounted(async () => {
   .cases-table td:has(.case-options__menu) {
     position: relative;
     z-index: 2001;
+    overflow: visible !important;
+  }
+
+  .cases-table td.case-cell--menu-open {
+    position: relative;
+    z-index: 2200;
     overflow: visible !important;
   }
 

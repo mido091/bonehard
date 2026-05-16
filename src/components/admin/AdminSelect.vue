@@ -436,15 +436,30 @@ watch(() => props.modelValue, (val) => {
   background: rgba(15, 23, 42, 0.06);
   box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.1);
 }
+[data-theme="light"] .admin-select-dropdown {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14);
+}
 [data-theme="light"] .admin-select-item {
   color: #1e293b;
 }
 [data-theme="light"] .admin-select-item:hover {
-  background: rgba(180, 83, 9, 0.07);
-  color: #b45309;
+  background: #f8efe1;
+  color: #9a3412;
 }
 [data-theme="light"] .admin-select-item.is-selected {
-  background: rgba(180, 83, 9, 0.1);
-  color: #b45309;
+  background: #f6e6cf;
+  color: #9a3412;
+}
+[data-theme="light"] .admin-select-item--clear {
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+  color: #64748b;
+}
+[data-theme="light"] .admin-select-empty {
+  color: #64748b;
+}
+[data-theme="light"] .admin-select-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(180, 83, 9, 0.26);
 }
 </style>

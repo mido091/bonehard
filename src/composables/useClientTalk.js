@@ -47,7 +47,13 @@ export function useClientTalk(orderId) {
         const currentUserId = authState.user?.id;
         // If we sent this message ourselves, check if we have a pending optimistic entry to replace
         if (currentUserId && Number(msg.senderId) === Number(currentUserId)) {
-          const pendingIdx = messages.value.findIndex((m) => m._pending && m.body === msg.body);
+          // Match by body text OR by image attachment name (for image messages)
+          const pendingIdx = messages.value.findIndex((m) => {
+            if (!m._pending) return false;
+            if (m.body && msg.body && m.body === msg.body) return true;
+            if (m.attachmentName && msg.attachmentName && m.attachmentName === msg.attachmentName) return true;
+            return false;
+          });
           if (pendingIdx !== -1) {
             // Replace the pending optimistic entry with the real incoming message
             const updated = [...messages.value];
@@ -183,6 +189,7 @@ export function useClientTalk(orderId) {
       senderId:    authState.user?.id || null, // assign optimistic senderId
       senderName:  'You',
       body:        body.trim(),
+      messageType: 'text',
       createdAt:   new Date().toISOString(),
       _pending:    true,
     };
@@ -201,6 +208,63 @@ export function useClientTalk(orderId) {
       // Remove the failed temp message
       messages.value = messages.value.filter((m) => m.id !== tempId);
       error.value = err.message || 'Failed to send message';
+    } finally {
+      sending.value = false;
+    }
+  }
+
+  /**
+   * Send an image file as a chat message.
+   * Uses multipart/form-data. Optimistically shows the image immediately
+   * via a local blob URL, then swaps it for the real signed Supabase URL.
+   *
+   * @param {File} imageFile - A File object from <input type="file">
+   * @param {string} [caption] - Optional text caption alongside the image
+   */
+  async function sendImage(imageFile, caption = '') {
+    if (!session.value?.id || !imageFile) return;
+    sending.value = true;
+    error.value   = '';
+
+    // Create a local blob URL for immediate preview
+    const localPreviewUrl = URL.createObjectURL(imageFile);
+    const tempId = `temp-img-${Date.now()}`;
+    const tempMsg = {
+      id:              tempId,
+      sessionId:       session.value.id,
+      senderId:        authState.user?.id || null,
+      senderName:      'You',
+      body:            caption.trim(),
+      messageType:     'image',
+      attachmentName:  imageFile.name,
+      attachmentUrl:   localPreviewUrl,  // local blob — shown while uploading
+      attachmentMimeType: imageFile.type,
+      attachmentSize:  imageFile.size,
+      createdAt:       new Date().toISOString(),
+      _pending:        true,
+      _localBlob:      true,
+    };
+    messages.value = [...messages.value, tempMsg];
+
+    try {
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      if (caption.trim()) formData.append('body', caption.trim());
+
+      const res = await api.upload(
+        `/api/client-talk/sessions/${session.value.id}/messages`,
+        formData,
+      );
+
+      // Revoke the local blob to free memory, then replace with real message
+      URL.revokeObjectURL(localPreviewUrl);
+      messages.value = messages.value.map((m) =>
+        m.id === tempId ? res.data : m,
+      );
+    } catch (err) {
+      URL.revokeObjectURL(localPreviewUrl);
+      messages.value = messages.value.filter((m) => m.id !== tempId);
+      error.value = err.message || 'Failed to send image';
     } finally {
       sending.value = false;
     }
@@ -280,6 +344,7 @@ export function useClientTalk(orderId) {
     openStaffTalk,
     fetchMessages,
     sendMessage,
+    sendImage,
     acceptSession,
     endSession,
     loadSessionById,

@@ -34,11 +34,63 @@ const unreadTrackingReady = ref(false);
 
 const {
   session, messages, status, loading, sending, ending, error,
-  fetchSession, requestTalk, sendMessage, endSession,
+  fetchSession, requestTalk, sendMessage, sendImage, endSession,
   subscribeToSession, fetchMessages,
 } = useClientTalk(props.orderId);
 
 const chatStatus = computed(() => (status.value === 'pending' ? 'active' : status.value));
+
+// ── Image attachment state ─────────────────────────────────────────────────
+const imageFileInput  = ref(null);  // hidden <input type="file">
+const pendingImage    = ref(null);  // File object awaiting send
+const pendingPreview  = ref('');    // local blob URL for preview
+const lightboxSrc     = ref('');    // fullscreen image URL
+const lightboxVisible = ref(false);
+
+function chooseImage() { imageFileInput.value?.click(); }
+
+function handleImageSelected(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  // Validate type client-side (server validates too)
+  if (!file.type.startsWith('image/')) {
+    error.value = 'Only image files can be sent (JPEG, PNG, GIF, WebP).';
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    error.value = 'Image is too large — maximum is 10 MB.';
+    return;
+  }
+  pendingImage.value   = file;
+  pendingPreview.value = URL.createObjectURL(file);
+  // Reset the input so the same file can be selected again if dismissed
+  e.target.value = '';
+}
+
+function cancelPendingImage() {
+  if (pendingPreview.value) URL.revokeObjectURL(pendingPreview.value);
+  pendingImage.value   = null;
+  pendingPreview.value = '';
+}
+
+async function handleSendImage() {
+  if (!pendingImage.value || sending.value) return;
+  const file    = pendingImage.value;
+  const caption = messageInput.value.trim();
+  cancelPendingImage();
+  messageInput.value = '';
+  await sendImage(file, caption);
+  inputEl.value?.focus();
+}
+
+function openLightbox(url) {
+  lightboxSrc.value     = url;
+  lightboxVisible.value = true;
+}
+function closeLightbox() {
+  lightboxVisible.value = false;
+  lightboxSrc.value     = '';
+}
 
 // ── Linkify: convert plain-text URLs to safe anchor tags ──────────────────
 function linkifySegments(text) {
@@ -163,13 +215,16 @@ onMounted(() => document.addEventListener('keydown', handleEscape));
 onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 const canSend = computed(() =>
-  chatStatus.value === 'active' && messageInput.value.trim().length > 0 && !sending.value
+  chatStatus.value === 'active'
+  && (messageInput.value.trim().length > 0 || !!pendingImage.value)
+  && !sending.value
 );
 const currentUserId = computed(() => authState.user?.id || null);
 
 // Automatically close the modal when the session ends
 watch(status, (newStatus) => {
   if (newStatus === 'ended') {
+    cancelPendingImage();
     emit('ended', session.value);
     emit('close');
   }
@@ -253,16 +308,38 @@ watch(status, (newStatus) => {
             >
               <span class="ct-bubble__sender">{{ msg.senderName || 'Team' }}</span>
               <div class="ct-bubble__body">
-                <!-- Safe linkified text — no v-html -->
-                <template v-for="(seg, i) in linkifySegments(msg.body)" :key="i">
-                  <a
-                    v-if="seg.type === 'link'"
-                    :href="seg.value"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="ct-link"
-                  >{{ seg.value }}</a>
-                  <span v-else>{{ seg.value }}</span>
+                <!-- Image message -->
+                <template v-if="msg.messageType === 'image' && msg.attachmentUrl">
+                  <button
+                    class="ct-image-btn"
+                    type="button"
+                    :title="msg.attachmentName || 'View image'"
+                    @click="openLightbox(msg.attachmentUrl)"
+                  >
+                    <img
+                      :src="msg.attachmentUrl"
+                      :alt="msg.attachmentName || 'Chat image'"
+                      class="ct-image-thumb"
+                      loading="lazy"
+                    />
+                    <span v-if="msg._pending" class="ct-image-uploading">Uploading…</span>
+                  </button>
+                  <!-- Optional caption below the image -->
+                  <p v-if="msg.body" class="ct-image-caption">{{ msg.body }}</p>
+                </template>
+
+                <!-- Text message (safe linkified — no v-html) -->
+                <template v-else>
+                  <template v-for="(seg, i) in linkifySegments(msg.body)" :key="i">
+                    <a
+                      v-if="seg.type === 'link'"
+                      :href="seg.value"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="ct-link"
+                    >{{ seg.value }}</a>
+                    <span v-else>{{ seg.value }}</span>
+                  </template>
                 </template>
               </div>
               <time class="ct-bubble__time" :datetime="msg.createdAt">{{ formatTime(msg.createdAt) }}</time>
@@ -272,25 +349,57 @@ watch(status, (newStatus) => {
 
         <!-- ── Footer / Input ─────────────────────────────────────────── -->
         <footer v-if="chatStatus === 'active'" class="ct-footer">
-          <textarea
-            ref="inputEl"
-            v-model="messageInput"
-            class="ct-input"
-            placeholder="Type a message…"
-            rows="1"
-            maxlength="4000"
-            aria-label="Message input"
-            @keydown="handleKeydown"
-          ></textarea>
-          <button
-            class="ct-send-btn"
-            type="button"
-            :disabled="!canSend"
-            aria-label="Send message"
-            @click="handleSend"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
+          <!-- Hidden file input for images -->
+          <input
+            ref="imageFileInput"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            class="ct-hidden-input"
+            @change="handleImageSelected"
+          />
+
+          <!-- Image preview above the input bar -->
+          <div v-if="pendingImage" class="ct-image-preview">
+            <img :src="pendingPreview" alt="Preview" class="ct-image-preview__thumb" />
+            <span class="ct-image-preview__name">{{ pendingImage.name }}</span>
+            <button class="ct-image-preview__remove" type="button" title="Remove image" @click="cancelPendingImage">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="ct-input-row">
+            <!-- Image attach button -->
+            <button
+              class="ct-attach-btn"
+              type="button"
+              title="Send image"
+              :disabled="sending"
+              @click="chooseImage"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </button>
+
+            <textarea
+              ref="inputEl"
+              v-model="messageInput"
+              class="ct-input"
+              :placeholder="pendingImage ? 'Add a caption (optional)…' : 'Type a message…'"
+              rows="1"
+              maxlength="4000"
+              aria-label="Message input"
+              @keydown="handleKeydown"
+            ></textarea>
+
+            <button
+              class="ct-send-btn"
+              type="button"
+              :disabled="!canSend"
+              aria-label="Send message"
+              @click="pendingImage ? handleSendImage() : handleSend()"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
         </footer>
 
         <!-- Ended — read-only note -->
@@ -322,6 +431,26 @@ watch(status, (newStatus) => {
           :class="{ 'ct-floating-bubble__live-dot--unread': hasUnread }"
         ></span>
       </button>
+    </Transition>
+  </Teleport>
+
+  <!-- ── Lightbox ──────────────────────────────────────────────────────── -->
+  <Teleport to="body">
+    <Transition name="ct-fade">
+      <div
+        v-if="lightboxVisible"
+        class="ct-lightbox"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Image preview"
+        @click.self="closeLightbox"
+        @keydown.escape="closeLightbox"
+      >
+        <button class="ct-lightbox__close" type="button" aria-label="Close" @click="closeLightbox">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <img :src="lightboxSrc" alt="Full size image" class="ct-lightbox__img" />
+      </div>
     </Transition>
   </Teleport>
 </template>
@@ -650,9 +779,9 @@ watch(status, (newStatus) => {
 /* ── Footer / input ───────────────────────────────────────────────────────── */
 .ct-footer {
   display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
-  padding: 0.85rem 1rem;
+  flex-direction: column;  /* stack preview above input row */
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
 }
@@ -715,6 +844,190 @@ watch(status, (newStatus) => {
 }
 
 .ct-send-btn svg { width: 17px; height: 17px; }
+
+/* ── Image attachment styles ──────────────────────────────────────────────── */
+.ct-hidden-input { display: none; }
+
+/* Input row wraps the attach button, textarea, and send button */
+.ct-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+/* Attach (image picker) button */
+.ct-attach-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.ct-attach-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8d9aa;
+  border-color: rgba(248, 217, 170, 0.3);
+}
+.ct-attach-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Pending image preview strip (shown above input row) */
+.ct-image-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(248, 217, 170, 0.07);
+  border: 1px solid rgba(248, 217, 170, 0.2);
+  animation: ct-slide-up 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ct-image-preview__thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.ct-image-preview__name {
+  flex: 1;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ct-image-preview__remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.ct-image-preview__remove:hover { background: rgba(239, 68, 68, 0.28); }
+
+/* Image bubble (thumbnail in the message list) */
+.ct-image-btn {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 100%;
+}
+.ct-image-thumb {
+  display: block;
+  max-width: min(220px, 100%);
+  max-height: 200px;
+  border-radius: 12px;
+  object-fit: cover;
+  transition: opacity 0.2s;
+}
+.ct-image-btn:hover .ct-image-thumb { opacity: 0.9; }
+
+.ct-image-uploading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.ct-image-caption {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+/* Image bubble body padding is smaller (image handles its own shape) */
+.ct-bubble__body:has(.ct-image-btn) {
+  padding: 0.35rem;
+}
+
+/* ── Lightbox overlay ─────────────────────────────────────────────────────── */
+.ct-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  cursor: zoom-out;
+}
+.ct-lightbox__img {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
+  cursor: default;
+  animation: ct-slide-up 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ct-lightbox__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s;
+  z-index: 1;
+}
+.ct-lightbox__close:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* Light mode overrides for image elements */
+[data-theme="light"] .ct-attach-btn {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+[data-theme="light"] .ct-attach-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #c2742a;
+  border-color: #fed7aa;
+}
+[data-theme="light"] .ct-image-preview {
+  background: rgba(194, 116, 42, 0.06);
+  border-color: #fed7aa;
+}
+[data-theme="light"] .ct-image-preview__name { color: #64748b; }
+[data-theme="light"] .ct-image-caption { color: #374151; }
+
+
 
 /* ── Light mode ───────────────────────────────────────────────────────────── */
 [data-theme="light"] .ct-modal {
@@ -834,7 +1147,8 @@ watch(status, (newStatus) => {
 
   /* Compact footer */
   .ct-footer {
-    padding: 0.65rem 0.85rem;
+    padding: 0.6rem 0.75rem;
+    gap: 0.4rem;
   }
 }
 

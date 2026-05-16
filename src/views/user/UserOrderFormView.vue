@@ -12,6 +12,9 @@ import { API_BASE_URL, api } from '../../services/api';
 import { uploadFilesDirectly } from '../../services/directUploads';
 import { authState, loadCurrentUser } from '../../stores/authStore';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import ClientTalkHistoryModal from '../../components/ClientTalkHistoryModal.vue';
+import ClientTalkTranscriptModal from '../../components/ClientTalkTranscriptModal.vue';
+import { useClientTalkHistory } from '../../composables/useClientTalkHistory';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
 import {
   CASE_ALLOWED_UPLOAD_EXTENSIONS,
@@ -28,9 +31,37 @@ const route = useRoute();
 const router = useRouter();
 const { showConfirm } = useConfirmDialog();
 const isEditing = computed(() => !!route.params.id);
+const recordId = computed(() => Number(route.params.id || 0));
 const loading = ref(false);
 const error = ref('');
 const showClientTalk = ref(false);
+const liveClientTalkSession = ref(null);
+const {
+  historyOpen,
+  historyLoading,
+  sessions: clientTalkSessions,
+  transcriptOpen,
+  transcriptLoading,
+  transcript,
+  openHistory,
+  closeHistory,
+  loadTranscript,
+  closeTranscript,
+} = useClientTalkHistory({
+  recordId,
+  historyPath: (id) => `/api/user/orders/${id}/client-talk/sessions`,
+  transcriptPath: (id, sessionId) => `/api/user/orders/${id}/client-talk/sessions/${sessionId}`,
+});
+
+async function selectConversation(session) {
+  if (['pending', 'active'].includes(session?.status)) {
+    liveClientTalkSession.value = session;
+    showClientTalk.value = true;
+    closeHistory();
+    return;
+  }
+  await loadTranscript(session);
+}
 const customFields = ref([]);
 const customValues = reactive({});
 const selectedUploads = ref([]);
@@ -351,6 +382,12 @@ onUnmounted(() => {
           type="button"
           @click="showClientTalk = true"
         >Client Talk</button>
+        <button
+          v-if="isEditing"
+          class="admin-link-button client-talk-button"
+          type="button"
+          @click="openHistory"
+        >View Conversations</button>
         <span
           v-else
           class="admin-link-button client-talk-button client-talk-button--disabled"
@@ -578,6 +615,12 @@ onUnmounted(() => {
           type="button"
           @click="showClientTalk = true"
         >Client Talk</button>
+        <button
+          v-if="isEditing"
+          class="admin-link-button client-talk-button"
+          type="button"
+          @click="openHistory"
+        >View Conversations</button>
         <span
           v-else
           class="admin-link-button client-talk-button client-talk-button--disabled"
@@ -592,7 +635,23 @@ onUnmounted(() => {
       v-if="showClientTalk && isEditing"
       :order-id="Number(route.params.id)"
       :order-name="form.name || ''"
-      @close="showClientTalk = false"
+      :initial-session="liveClientTalkSession"
+      @close="showClientTalk = false; liveClientTalkSession = null"
+      @ended="showClientTalk = false; liveClientTalkSession = null"
+    />
+    <ClientTalkHistoryModal
+      :visible="historyOpen"
+      :sessions="clientTalkSessions"
+      :loading="historyLoading"
+      title="Order Conversations"
+      @close="closeHistory"
+      @select="selectConversation"
+    />
+    <ClientTalkTranscriptModal
+      :visible="transcriptOpen"
+      :session="transcript"
+      :loading="transcriptLoading"
+      @close="closeTranscript"
     />
   </div>
 </template>

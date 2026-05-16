@@ -5,6 +5,9 @@ import { API_BASE_URL, api } from '../../services/api';
 import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
 import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import ClientTalkHistoryModal from '../../components/ClientTalkHistoryModal.vue';
+import ClientTalkTranscriptModal from '../../components/ClientTalkTranscriptModal.vue';
+import { useClientTalkHistory } from '../../composables/useClientTalkHistory';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
 
@@ -18,6 +21,34 @@ const renamingFileId = ref(null);
 const savingFileNameId = ref(null);
 const computedProgress = computed(() => statusProgressPercent(order.value?.statusName, order.value?.progressPercentage));
 const showClientTalk = ref(false);
+const liveClientTalkSession = ref(null);
+const recordId = computed(() => Number(route.params.id));
+const {
+  historyOpen,
+  historyLoading,
+  sessions: clientTalkSessions,
+  transcriptOpen,
+  transcriptLoading,
+  transcript,
+  openHistory,
+  closeHistory,
+  loadTranscript,
+  closeTranscript,
+} = useClientTalkHistory({
+  recordId,
+  historyPath: (id) => `/api/user/orders/${id}/client-talk/sessions`,
+  transcriptPath: (id, sessionId) => `/api/user/orders/${id}/client-talk/sessions/${sessionId}`,
+});
+
+async function selectConversation(session) {
+  if (['pending', 'active'].includes(session?.status)) {
+    liveClientTalkSession.value = session;
+    showClientTalk.value = true;
+    closeHistory();
+    return;
+  }
+  await loadTranscript(session);
+}
 
 const vFocus = { mounted: (el) => el.focus() };
 
@@ -141,6 +172,7 @@ onMounted(loadOrder);
         </div>
         <div class="admin-toolbar">
           <button class="admin-link-button client-talk-button" type="button" @click="showClientTalk = true">Client Talk</button>
+          <button class="admin-link-button" type="button" @click="openHistory">View Conversations</button>
           <RouterLink class="admin-primary-button" :to="`/dashboard/orders/${route.params.id}/edit`">Edit Order</RouterLink>
           <RouterLink class="admin-link-button" to="/dashboard">Back to Orders</RouterLink>
         </div>
@@ -312,7 +344,23 @@ onMounted(loadOrder);
       v-if="showClientTalk"
       :order-id="Number(route.params.id)"
       :order-name="order?.name || ''"
-      @close="showClientTalk = false"
+      :initial-session="liveClientTalkSession"
+      @close="showClientTalk = false; liveClientTalkSession = null"
+      @ended="showClientTalk = false; liveClientTalkSession = null"
+    />
+    <ClientTalkHistoryModal
+      :visible="historyOpen"
+      :sessions="clientTalkSessions"
+      :loading="historyLoading"
+      title="Order Conversations"
+      @close="closeHistory"
+      @select="selectConversation"
+    />
+    <ClientTalkTranscriptModal
+      :visible="transcriptOpen"
+      :session="transcript"
+      :loading="transcriptLoading"
+      @close="closeTranscript"
     />
   </div>
 </template>

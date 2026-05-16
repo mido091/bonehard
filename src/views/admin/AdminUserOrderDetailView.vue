@@ -8,8 +8,12 @@ import WorkflowSummary from '../../components/admin/WorkflowSummary.vue';
 import ReferenceLinksList from '../../components/admin/ReferenceLinksList.vue';
 import ReferenceLinksEditor from '../../components/admin/ReferenceLinksEditor.vue';
 import ClientTalkModal from '../../components/ClientTalkModal.vue';
+import ClientTalkHistoryModal from '../../components/ClientTalkHistoryModal.vue';
+import ClientTalkTranscriptModal from '../../components/ClientTalkTranscriptModal.vue';
+import { useClientTalkHistory } from '../../composables/useClientTalkHistory';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { API_BASE_URL, api } from '../../services/api';
+import { authState } from '../../stores/authStore';
 import { statusProgressPercent } from '../../constants/workflowOptions';
 import { formatCairoFileDateTime } from '../../utils/dateTime';
 
@@ -49,6 +53,37 @@ const savingStatus = ref(false);
 const showClientTalk = ref(false);
 const clientTalkSession = ref(null);
 const openingClientTalk = ref(false);
+const recordId = computed(() => Number(route.params.id));
+const canDeleteClientTalk = computed(() => authState.user?.role === 'admin');
+const {
+  historyOpen,
+  historyLoading,
+  sessions: clientTalkSessions,
+  transcriptOpen,
+  transcriptLoading,
+  transcript,
+  deletingSessionId,
+  openHistory,
+  closeHistory,
+  loadTranscript,
+  closeTranscript,
+  deleteTranscript,
+} = useClientTalkHistory({
+  recordId,
+  historyPath: (id) => `/api/admin/user-orders/${id}/client-talk/sessions`,
+  transcriptPath: (id, sessionId) => `/api/admin/user-orders/${id}/client-talk/sessions/${sessionId}`,
+  canDelete: canDeleteClientTalk,
+});
+
+async function selectConversation(session) {
+  if (['pending', 'active'].includes(session?.status)) {
+    clientTalkSession.value = session;
+    showClientTalk.value = true;
+    closeHistory();
+    return;
+  }
+  await loadTranscript(session);
+}
 
 const vFocus = { mounted: (el) => el.focus() };
 
@@ -308,6 +343,10 @@ onMounted(loadOrder);
           <button class="premium-btn-secondary" type="button" :disabled="openingClientTalk" @click="openClientTalk">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
             {{ openingClientTalk ? 'Opening...' : 'Client Talk' }}
+          </button>
+          <button class="premium-btn-secondary" type="button" @click="openHistory">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 10h8M8 14h5"/></svg>
+            View Conversations
           </button>
           <button class="premium-btn-secondary" type="button" :disabled="exporting" @click="exportPackage">
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -615,6 +654,26 @@ onMounted(loadOrder);
       :initial-session="clientTalkSession"
       @close="showClientTalk = false"
       @ended="showClientTalk = false"
+    />
+    <ClientTalkHistoryModal
+      :visible="historyOpen"
+      :sessions="clientTalkSessions"
+      :loading="historyLoading"
+      :can-delete="canDeleteClientTalk"
+      :deleting-id="deletingSessionId"
+      title="Order Conversations"
+      @close="closeHistory"
+      @select="selectConversation"
+      @delete="deleteTranscript"
+    />
+    <ClientTalkTranscriptModal
+      :visible="transcriptOpen"
+      :session="transcript"
+      :loading="transcriptLoading"
+      :can-delete="canDeleteClientTalk"
+      :deleting="!!deletingSessionId"
+      @close="closeTranscript"
+      @delete="deleteTranscript"
     />
   </section>
 </template>

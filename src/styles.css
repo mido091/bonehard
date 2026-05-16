@@ -6313,6 +6313,35 @@ iframe:focus-visible {
   font-weight: 750;
 }
 
+[data-theme="light"] .admin-select-dropdown {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.14);
+}
+
+[data-theme="light"] .admin-select-item {
+  color: #172033;
+}
+
+[data-theme="light"] .admin-select-item:hover,
+[data-theme="light"] .admin-select-item.is-selected {
+  background: #f8efe1;
+  color: #9a3412;
+}
+
+[data-theme="light"] .admin-select-item--clear {
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+  color: #64748b;
+}
+
+[data-theme="light"] .admin-select-empty {
+  color: #64748b;
+}
+
+[data-theme="light"] .admin-select-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(180, 83, 9, 0.26);
+}
+
 .users-role-select {
   max-width: 10rem;
 }

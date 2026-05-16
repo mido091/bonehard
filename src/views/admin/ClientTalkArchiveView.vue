@@ -205,6 +205,20 @@ watch(perPage, () => {
   loadSessions();
 });
 
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+const lightboxSrc = ref('');
+const lightboxVisible = ref(false);
+
+function openLightbox(url) {
+  lightboxSrc.value = url;
+  lightboxVisible.value = true;
+}
+
+function closeLightbox() {
+  lightboxVisible.value = false;
+  lightboxSrc.value = '';
+}
+
 onMounted(loadSessions);
 </script>
 
@@ -453,7 +467,30 @@ onMounted(loadSessions);
                       <strong>{{ message.senderName || 'Team' }}</strong>
                       <time :datetime="message.createdAt">{{ formatTime(message.createdAt) }}</time>
                     </div>
-                    <p>
+
+                    <!-- Image message -->
+                    <template v-if="message.messageType === 'image' && message.attachmentUrl">
+                      <button
+                        class="archive-msg-image-btn"
+                        type="button"
+                        :title="message.attachmentName || 'View image'"
+                        @click="openLightbox(message.attachmentUrl)"
+                      >
+                        <img
+                          :src="message.attachmentUrl"
+                          :alt="message.attachmentName || 'Chat image'"
+                          class="archive-msg-image-thumb"
+                          loading="lazy"
+                        />
+                        <span class="archive-msg-image-zoom" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+                        </span>
+                      </button>
+                      <p v-if="message.body" class="archive-msg-caption">{{ message.body }}</p>
+                    </template>
+
+                    <!-- Text message -->
+                    <p v-else>
                       <template v-for="(segment, index) in linkifySegments(message.body)" :key="index">
                         <a
                           v-if="segment.type === 'link'"
@@ -501,6 +538,26 @@ onMounted(loadSessions);
               </button>
             </footer>
           </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ── Image Lightbox ── -->
+    <Teleport to="body">
+      <Transition name="client-talk-modal">
+        <div
+          v-if="lightboxVisible"
+          class="archive-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+          @click.self="closeLightbox"
+          @keydown.escape="closeLightbox"
+        >
+          <button class="archive-lightbox__close" type="button" aria-label="Close" @click="closeLightbox">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <img :src="lightboxSrc" alt="Full size image" class="archive-lightbox__img" />
         </div>
       </Transition>
     </Teleport>
@@ -1390,5 +1447,102 @@ onMounted(loadSessions);
   .client-talk-message__bubble {
     width: 100%;
   }
+}
+
+/* ── Archive Image Messages ─────────────────────────────────────────────── */
+.archive-msg-image-btn {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: rgba(var(--rgb-foreground), 0.04);
+  max-width: 260px;
+  width: 100%;
+}
+
+.archive-msg-image-thumb {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 10px;
+  transition: filter 0.2s ease;
+}
+
+.archive-msg-image-btn:hover .archive-msg-image-thumb {
+  filter: brightness(0.75);
+}
+
+.archive-msg-image-zoom {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.archive-msg-image-btn:hover .archive-msg-image-zoom {
+  opacity: 1;
+}
+
+.archive-msg-caption {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(var(--rgb-foreground), 0.75);
+  font-style: italic;
+  word-break: break-word;
+}
+
+/* ── Lightbox ──────────────────────────────────────────────────────────── */
+.archive-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 2rem;
+  cursor: zoom-out;
+}
+
+.archive-lightbox__img {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: 12px;
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7);
+  object-fit: contain;
+  cursor: default;
+}
+
+.archive-lightbox__close {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  z-index: 100000;
+}
+
+.archive-lightbox__close:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 </style>
